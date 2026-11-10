@@ -991,3 +991,21 @@ input {
     height: min(300px, 46vh);
   }
 }
+
+.form-error {
+  margin: 0 0 0.75rem;
+  color: #FF8A80;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.btn-primary-green:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.google-btn-wrap {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}

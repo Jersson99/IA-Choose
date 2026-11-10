@@ -26,3 +26,9 @@ lerna-debug.log*
 # Local agent / tool caches
 .agent/
 .impeccable/
+
+# Base de datos local y claves del servidor
+server/data/
+
+# Variables de entorno (secretos locales)
+.env
