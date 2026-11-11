@@ -1009,3 +1009,1314 @@ input {
   justify-content: center;
   min-height: 44px;
 }
+
+/* =====================================================================
+ * DASHBOARD DE USUARIO PROFESIONAL (OPENROUTER-INSPIRED · PALETA OFICIAL)
+ * ===================================================================== */
+.saas-dashboard-shell {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: 268px 1fr;
+  overflow: hidden;
+  background-color: #1A7A6C;
+  background-image:
+    radial-gradient(circle at 8% 10%, #FBF7DC 0%, rgba(247, 244, 215, 0.88) 22%, transparent 52%),
+    radial-gradient(circle at 46% 14%, #DCE0EE 0%, rgba(214, 220, 236, 0.72) 28%, transparent 60%),
+    radial-gradient(circle at 92% 12%, #B8F9BE 0%, rgba(145, 240, 162, 0.75) 30%, transparent 62%),
+    radial-gradient(circle at 10% 82%, #18CFA3 0%, rgba(22, 168, 145, 0.85) 35%, transparent 68%),
+    radial-gradient(circle at 48% 95%, #0D5B66 0%, rgba(15, 98, 107, 0.9) 40%, transparent 72%),
+    radial-gradient(circle at 92% 88%, #078934 0%, rgba(16, 152, 66, 0.92) 42%, transparent 75%),
+    linear-gradient(135deg, #F6F3D6 0%, #7EDAC2 38%, #2E8A78 70%, #0C8E3B 100%);
+}
+
+/* SIDEBAR LATERAL */
+.saas-sidebar {
+  height: 100%;
+  background: rgba(11, 20, 16, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 30;
+}
+
+.sidebar-brand-block {
+  padding: 4px 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.sidebar-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-brand-logo {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #FFFFFF;
+}
+
+.sidebar-currency-badge {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(47, 208, 88, 0.2);
+  color: var(--lime-robot);
+  border: 1px solid rgba(153, 240, 24, 0.4);
+}
+
+.sidebar-brand-caption {
+  font-size: 0.78rem;
+  color: rgba(218, 226, 222, 0.78);
+  margin-top: 2px;
+}
+
+.sidebar-wallet-summary {
+  background: linear-gradient(145deg, rgba(28, 52, 40, 0.92), rgba(16, 33, 25, 0.95));
+  border: 1px solid rgba(153, 240, 24, 0.28);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wallet-mini-label {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.72rem;
+  color: rgba(218, 226, 222, 0.82);
+  letter-spacing: 0.03em;
+}
+
+.wallet-mini-amount {
+  font-family: 'Chivo Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.22rem;
+  font-weight: 700;
+  color: var(--lime-robot);
+}
+
+.wallet-mini-topup-btn {
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: none;
+  background-color: var(--btn-green);
+  color: #FFFFFF;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.wallet-mini-topup-btn:hover {
+  background-color: var(--btn-green-hover);
+  transform: translateY(-1px);
+}
+
+.sidebar-nav-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.sidebar-nav-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(218, 226, 222, 0.84);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.sidebar-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #FFFFFF;
+}
+
+.sidebar-nav-btn.active {
+  background: rgba(47, 208, 88, 0.18);
+  border-color: rgba(153, 240, 24, 0.42);
+  color: #FFFFFF;
+}
+
+.sidebar-nav-btn.active svg {
+  color: var(--lime-robot);
+}
+
+.nav-btn-copy {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.nav-btn-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.nav-btn-sub {
+  font-size: 0.72rem;
+  color: rgba(218, 226, 222, 0.68);
+}
+
+.sidebar-user-footer {
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--btn-green);
+  color: #061A0E;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-footer-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.user-footer-meta strong {
+  font-size: 0.83rem;
+  color: #FFFFFF;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-footer-meta span {
+  font-size: 0.74rem;
+  color: rgba(218, 226, 222, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-logout-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #FCA5A5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+
+.sidebar-logout-icon-btn:hover {
+  background: rgba(252, 165, 165, 0.18);
+}
+
+/* ÁREA PRINCIPAL DERECHA */
+.saas-main-area {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.saas-topbar {
+  padding: 16px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: rgba(247, 245, 226, 0.42);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(11, 17, 14, 0.12);
+  flex-shrink: 0;
+}
+
+.topbar-left-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mobile-sidebar-toggle {
+  display: none;
+  width: 40px;
+  height: 38px;
+  background: transparent;
+  border: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.saas-title-scale {
+  font-size: clamp(1.5rem, 2.5vw, 2.2rem);
+}
+
+.topbar-section-breadcrumb {
+  font-size: 0.84rem;
+  color: #14281E;
+}
+
+.topbar-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.demo-status-pill {
+  padding: 7px 13px;
+  border-radius: 9px;
+  border: 1px solid rgba(11, 17, 14, 0.25);
+  background: rgba(11, 20, 16, 0.85);
+  color: #FFFFFF;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.demo-status-pill.is-active {
+  border-color: var(--lime-robot);
+  color: var(--lime-robot);
+}
+
+.demo-status-pill:hover {
+  transform: translateY(-1px);
+}
+
+.topbar-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 9px;
+  border: none;
+  background: #0B1410;
+  color: #FFFFFF;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.topbar-quick-btn strong {
+  font-family: 'Chivo Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--lime-robot);
+}
+
+/* BANNER DE NOTIFICACIÓN */
+.saas-toast-banner {
+  margin: 12px 28px 0;
+  padding: 11px 16px;
+  border-radius: 10px;
+  background: rgba(11, 20, 16, 0.95);
+  border: 1px solid var(--btn-green);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.84rem;
+}
+
+.saas-toast-banner strong {
+  color: var(--lime-robot);
+  margin-right: 8px;
+}
+
+.saas-toast-banner button {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+/* WORKSPACE CON SCROLL INTERNO LIMPIO */
+.saas-scroll-workspace {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 28px 34px;
+}
+
+.dashboard-section-stack {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* TARJETAS KPI EN OVERVIEW */
+.kpi-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.kpi-card {
+  background: rgba(14, 26, 21, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  box-shadow: 0 12px 28px -10px rgba(5, 22, 16, 0.32);
+}
+
+.kpi-card-highlight {
+  background: linear-gradient(145deg, rgba(20, 44, 33, 0.96), rgba(12, 26, 20, 0.96));
+  border-color: rgba(153, 240, 24, 0.42);
+}
+
+.kpi-card-wide {
+  grid-column: span 2;
+}
+
+.kpi-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kpi-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(218, 226, 222, 0.86);
+}
+
+.kpi-tag {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--lime-robot);
+}
+
+.kpi-value {
+  font-family: 'Chivo Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.3rem, 1.8vw, 1.65rem);
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.kpi-card-highlight .kpi-value {
+  color: var(--lime-robot);
+}
+
+.kpi-foot {
+  font-size: 0.77rem;
+  color: rgba(218, 226, 222, 0.74);
+}
+
+.token-split-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: rgba(218, 226, 222, 0.86);
+}
+
+.token-split-row strong {
+  font-family: 'Chivo Mono', monospace;
+  color: var(--lime-robot);
+}
+
+/* BANNER DE CUENTA SIN ACTIVIDAD */
+.empty-activity-banner {
+  background: rgba(14, 28, 22, 0.94);
+  border: 1px solid rgba(153, 240, 24, 0.4);
+  border-radius: 14px;
+  padding: 18px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.empty-activity-banner h2 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: #FFFFFF;
+  margin-bottom: 4px;
+}
+
+.empty-activity-banner p {
+  font-size: 0.85rem;
+  color: rgba(218, 226, 222, 0.84);
+  max-width: 68ch;
+}
+
+.compact-btn {
+  width: auto;
+  padding: 0 18px;
+  height: 38px;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+/* PANEL ESTÁNDAR DEL DASHBOARD */
+.saas-panel-card {
+  background: rgba(14, 26, 21, 0.93);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 16px 34px -12px rgba(5, 22, 16, 0.35);
+}
+
+.panel-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.panel-title {
+  font-family: var(--font-display);
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.panel-subtitle {
+  font-size: 0.83rem;
+  color: rgba(218, 226, 222, 0.78);
+  margin-top: 2px;
+}
+
+/* PÍLDORAS DE FILTRO Y CONTROLES DE GRÁFICO */
+.chart-controls-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.segmented-pills {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 3px;
+  border-radius: 9px;
+  gap: 3px;
+}
+
+.seg-pill {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(218, 226, 222, 0.84);
+  font-size: 0.79rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.seg-pill:hover {
+  color: #FFFFFF;
+}
+
+.seg-pill.active {
+  background: var(--btn-green);
+  color: #FFFFFF;
+}
+
+.custom-date-range-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.custom-date-range-bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: rgba(218, 226, 222, 0.88);
+}
+
+.custom-date-range-bar input {
+  background: rgba(11, 20, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+}
+
+/* GRÁFICO INTERACTIVO DE BARRAS */
+.interactive-chart-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chart-tooltip-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.82rem;
+}
+
+.tooltip-date-block {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tooltip-label {
+  color: rgba(218, 226, 222, 0.76);
+}
+
+.tooltip-metrics-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: 'Chivo Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltip-metrics-row strong {
+  color: var(--lime-robot);
+}
+
+.chart-bars-grid {
+  height: 195px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: end;
+  gap: 8px;
+  padding-top: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.chart-bar-col {
+  height: 100%;
+  background: transparent;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  cursor: pointer;
+  padding: 0 2px 8px;
+}
+
+.chart-bar-value {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.7rem;
+  color: rgba(218, 226, 222, 0.82);
+  min-height: 14px;
+}
+
+.chart-bar-track {
+  width: 100%;
+  max-width: 38px;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px 6px 2px 2px;
+  overflow: hidden;
+}
+
+.chart-bar-fill {
+  width: 100%;
+  background: linear-gradient(180deg, var(--lime-robot) 0%, var(--btn-green) 100%);
+  border-radius: 6px 6px 2px 2px;
+  transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+}
+
+.chart-bar-fill.is-zero {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.chart-bar-col.is-active .chart-bar-fill,
+.chart-bar-col:hover .chart-bar-fill {
+  filter: brightness(1.2);
+}
+
+.chart-bar-label {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.71rem;
+  color: rgba(218, 226, 222, 0.76);
+  white-space: nowrap;
+}
+
+/* BLOQUE DE ENRUTADOR + ROBOT EN OVERVIEW */
+.overview-router-grid {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  align-items: center;
+  gap: 20px;
+}
+
+.overview-robot-card {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.overview-robot-card .robot-stage {
+  width: 195px;
+}
+
+.overview-task-box {
+  max-width: none;
+  height: auto;
+  min-height: 230px;
+}
+
+/* SECCIÓN USAGE: CONTROLES, BARRAS COMPARATIVAS Y TABLAS */
+.filter-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.saas-select,
+.saas-input,
+.saas-search-input {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(9, 17, 13, 0.9);
+  color: #FFFFFF;
+  font-size: 0.83rem;
+}
+
+.saas-search-input {
+  min-width: 240px;
+}
+
+.saas-select.full-width,
+.saas-input {
+  width: 100%;
+}
+
+.usage-mini-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.usage-mini-box {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-mini-box span {
+  font-size: 0.76rem;
+  color: rgba(218, 226, 222, 0.78);
+}
+
+.usage-mini-box strong {
+  font-family: 'Chivo Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  color: var(--lime-robot);
+}
+
+.usage-two-col-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.comparative-bars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.comp-bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comp-bar-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.84rem;
+}
+
+.comp-bar-sub {
+  margin-left: 8px;
+  font-size: 0.76rem;
+  color: rgba(218, 226, 222, 0.72);
+}
+
+.comp-bar-numbers {
+  text-align: right;
+  font-family: 'Chivo Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+
+.comp-bar-numbers strong {
+  color: var(--lime-robot);
+  margin-right: 8px;
+}
+
+.comp-bar-numbers span {
+  color: rgba(218, 226, 222, 0.76);
+}
+
+.comp-bar-track {
+  width: 100%;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.comp-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--btn-green), var(--lime-robot));
+}
+
+.comp-bar-fill.provider-fill {
+  background: linear-gradient(90deg, #18CFA3, var(--btn-green));
+}
+
+/* TABLAS DEL DASHBOARD */
+.saas-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.saas-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.saas-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(218, 226, 222, 0.78);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.saas-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  vertical-align: middle;
+}
+
+.saas-table tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.saas-table .num-cell {
+  text-align: right;
+}
+
+.mono-td {
+  font-family: 'Chivo Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.nowrap-td {
+  white-space: nowrap;
+}
+
+.cost-td,
+.positive-amount {
+  color: var(--lime-robot);
+  font-weight: 700;
+}
+
+.negative-amount {
+  color: #FCA5A5;
+  font-weight: 700;
+}
+
+.activity-prompt-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 340px;
+}
+
+.activity-prompt-cell strong {
+  font-weight: 600;
+  color: #FFFFFF;
+}
+
+.activity-prompt-cell span {
+  font-size: 0.75rem;
+  color: rgba(218, 226, 222, 0.74);
+}
+
+.status-badges-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.status-ok {
+  background: rgba(47, 208, 88, 0.18);
+  color: var(--lime-robot);
+}
+
+.status-demo {
+  background: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+}
+
+.status-revoked {
+  background: rgba(252, 165, 165, 0.16);
+  color: #FCA5A5;
+}
+
+.empty-table-cell,
+.empty-inline-note {
+  text-align: center;
+  padding: 24px;
+  color: rgba(218, 226, 222, 0.74);
+  font-size: 0.86rem;
+}
+
+/* CATÁLOGO DE MODELOS (MODELS) */
+.models-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.model-catalog-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.model-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.model-card-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: #FFFFFF;
+}
+
+.model-card-provider {
+  font-size: 0.78rem;
+  color: rgba(218, 226, 222, 0.76);
+}
+
+.availability-pill {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.availability-pill.is-online {
+  background: rgba(47, 208, 88, 0.18);
+  color: var(--lime-robot);
+}
+
+.availability-pill.is-pilot {
+  background: rgba(24, 207, 163, 0.22);
+  color: #A7F3D0;
+}
+
+.availability-pill.is-warning {
+  background: rgba(253, 230, 138, 0.18);
+  color: #FDE68A;
+}
+
+.model-card-desc {
+  font-size: 0.84rem;
+  color: rgba(218, 226, 222, 0.86);
+  line-height: 1.48;
+}
+
+.model-pricing-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(9, 17, 13, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.model-pricing-strip div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-pricing-strip span {
+  font-size: 0.72rem;
+  color: rgba(218, 226, 222, 0.74);
+}
+
+.model-pricing-strip strong {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.86rem;
+  color: #FFFFFF;
+}
+
+.model-pricing-strip strong.highlight-cop {
+  color: var(--lime-robot);
+}
+
+.model-benchmarks-mini {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.bm-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bm-item span {
+  font-size: 0.7rem;
+  color: rgba(218, 226, 222, 0.74);
+}
+
+.bm-item strong {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.84rem;
+  color: #FFFFFF;
+}
+
+.model-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.75rem;
+  color: rgba(218, 226, 222, 0.76);
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* TRANSACCIONES Y SALDO (BILLING) */
+.billing-balance-banner {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(47, 208, 88, 0.14);
+  border: 1px solid rgba(153, 240, 24, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.billing-balance-banner span {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.billing-balance-banner strong {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 1.4rem;
+  color: var(--lime-robot);
+}
+
+.topup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.topup-presets-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.preset-amt-btn {
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: #FFFFFF;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.preset-amt-btn.active {
+  background: rgba(47, 208, 88, 0.24);
+  border-color: var(--lime-robot);
+  color: var(--lime-robot);
+}
+
+.topup-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.saas-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(218, 226, 222, 0.9);
+}
+
+.billing-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.billing-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.86rem;
+}
+
+.billing-summary-row strong {
+  font-family: 'Chivo Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* CLAVES API (API KEYS) */
+.api-key-create-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+}
+
+.secret-key-reveal-box {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(47, 208, 88, 0.16);
+  border: 1px solid var(--lime-robot);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.secret-code-pill {
+  display: block;
+  margin-top: 6px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.9rem;
+  color: var(--lime-robot);
+  word-break: break-all;
+}
+
+.secret-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.revoke-key-btn {
+  padding: 5px 11px;
+  border-radius: 7px;
+  border: 1px solid rgba(252, 165, 165, 0.4);
+  background: rgba(252, 165, 165, 0.12);
+  color: #FCA5A5;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.revoke-key-btn:hover {
+  background: rgba(252, 165, 165, 0.24);
+}
+
+/* CONFIGURACIÓN (SETTINGS) */
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.settings-submit-row {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+
+.saas-state-card {
+  margin: 28px;
+  padding: 28px;
+  border-radius: 14px;
+  background: rgba(14, 26, 21, 0.92);
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ADAPTACIÓN RESPONSIVA DEL DASHBOARD */
+@media (max-width: 1120px) {
+  .kpi-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .usage-mini-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .usage-two-col-grid,
+  .models-cards-grid,
+  .overview-router-grid,
+  .settings-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .saas-dashboard-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .saas-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 270px;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .saas-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .mobile-sidebar-toggle {
+    display: flex;
+  }
+
+  .saas-topbar,
+  .saas-scroll-workspace {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .kpi-cards-grid,
+  .topup-presets-row,
+  .topup-fields-grid,
+  .api-key-create-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-card-wide {
+    grid-column: span 1;
+  }
+}

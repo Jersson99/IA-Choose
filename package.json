@@ -7,6 +7,7 @@
     "dev": "concurrently -k -n api,web \"npm:server\" \"npm:client\"",
     "client": "vite",
     "server": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server/index.js",
+    "train": "node --disable-warning=ExperimentalWarning scripts/trainRouter.js",
     "build": "vite build",
     "preview": "vite preview"
   },

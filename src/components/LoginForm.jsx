@@ -29,12 +29,12 @@ export default function LoginForm({
         <FormField
           id="login-email"
           name="email"
-          type="email"
-          label="Correo Electrónico"
+          type="text"
+          label="Correo Electrónico o Usuario"
           value={email}
           onChange={setEmail}
           onFocusChange={onFocusChange}
-          autoComplete="email"
+          autoComplete="username"
         />
         <FormField
           id="login-password"
