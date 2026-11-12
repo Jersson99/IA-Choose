@@ -324,10 +324,17 @@ export default function DashboardPage({ user, onLogout, robot }) {
   const [simDocType, setSimDocType] = useState('CC');
   const [simDocNumber, setSimDocNumber] = useState('1020304050');
 
-  // Estados de la sección API Keys
+  // Estados de la sección API Keys y Gateway Moonshot Kimi
   const [newKeyName, setNewKeyName] = useState('');
   const [justCreatedSecret, setJustCreatedSecret] = useState(null);
   const [creatingKey, setCreatingKey] = useState(false);
+  const [gatewayTestKey, setGatewayTestKey] = useState('');
+  const [gatewayTestModel, setGatewayTestModel] = useState('kimi-k2');
+  const [gatewayTestPrompt, setGatewayTestPrompt] = useState(
+    'Explica brevemente cómo funciona la ventana de contexto de 256K tokens de Moonshot Kimi K2 para analizar tesis universitarias.'
+  );
+  const [testingGateway, setTestingGateway] = useState(false);
+  const [gatewayTestResult, setGatewayTestResult] = useState(null);
 
   // Estados de la sección Settings
   const [settingsName, setSettingsName] = useState(user?.name || '');
@@ -361,9 +368,51 @@ export default function DashboardPage({ user, onLogout, robot }) {
   useEffect(() => {
     fetchDashboard();
 
-    // Si Wompi redirige de vuelta tras un pago en PSE / Bancolombia con ?id=xxx
     const params = new URLSearchParams(window.location.search);
     const wompiTxId = params.get('id');
+    const wompiReturn = params.get('wompi_return');
+    const returnRef = params.get('reference');
+    const returnStatus = params.get('status');
+    const returnAmount = Number(params.get('amount')) || 0;
+    const returnMethod = params.get('method') || 'Wompi';
+
+    // 1. Retorno automático desde la Pasarela Web por URL (/wompi-gateway)
+    if (wompiReturn === '1' && returnRef) {
+      setActiveTab('billing');
+      dashboardApi
+        .verifyWompiPayment({
+          reference: returnRef,
+          simulatedStatus: returnStatus || 'APPROVED',
+        })
+        .then((res) => {
+          if (res?.dashboard) setData(res.dashboard);
+          const creditedAmount = res?.outcome?.amountCop || returnAmount;
+          if (res?.outcome?.status === 'completed' || returnStatus === 'APPROVED') {
+            showToast(
+              '¡Pago reflejado exitosamente en IA CHOOSE!',
+              `Se acreditaron ${formatCop(creditedAmount)} (${returnMethod}) a tu billetera disponible.`
+            );
+            robot.say(
+              'celebrate',
+              `¡Recarga completada por URL! +${formatCop(creditedAmount)} en tu cuenta`,
+              3800
+            );
+          } else {
+            showToast(
+              'Pago declinado en la pasarela',
+              'La transacción fue rechazada y no se realizaron cargos.'
+            );
+            robot.say('peek', 'El pago fue rechazado en la pasarela.', 3000);
+          }
+        })
+        .catch((err) => showToast('Aviso al sincronizar pago', err.message))
+        .finally(() => {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+      return;
+    }
+
+    // 2. Si Wompi oficial redirige de vuelta tras un pago con ?id=xxx
     if (wompiTxId) {
       setActiveTab('billing');
       dashboardApi
@@ -624,14 +673,11 @@ export default function DashboardPage({ user, onLogout, robot }) {
           showToast('Error al verificar con Wompi', verifyErr.message);
         }
       });
+    } else if (session.checkoutUrl) {
+      // Modo Pasarela por URL: redirigir a la URL de pago de Wompi y al finalizar vuelve a IA CHOOSE con el saldo reflejado
+      window.location.href = session.checkoutUrl;
     } else {
-      // Modo respaldo: abrir el Simulador Interactivo de Wompi Sandbox
       setWompiSimSession(session);
-      robot.say(
-        'wave',
-        `Pasarela Wompi Sandbox lista para ${session.method} (${formatCop(session.amountCop)})`,
-        3200
-      );
     }
   };
 
@@ -703,15 +749,15 @@ export default function DashboardPage({ user, onLogout, robot }) {
       : tx.method?.includes('PSE')
       ? 'PSE'
       : 'Nequi';
-    setWompiSimSession({
-      mode: 'local_sandbox',
-      environment: data?.wompi?.env || 'sandbox',
-      currency: 'COP',
-      amountCop: tx.amount_cop,
-      amountInCents: tx.amount_cop * 100,
+    const q = new URLSearchParams({
       reference: tx.reference,
+      amount: String(tx.amount_cop),
+      currency: 'COP',
       method: methodClean,
+      email: data?.user?.email || user?.email || 'usuario@iachoose.co',
+      name: data?.user?.name || user?.name || 'Usuario IA CHOOSE',
     });
+    window.location.href = `/wompi-gateway?${q.toString()}`;
   };
 
   const handleCreateApiKey = async (e) => {
@@ -720,13 +766,47 @@ export default function DashboardPage({ user, onLogout, robot }) {
     try {
       const result = await dashboardApi.createApiKey(newKeyName);
       setJustCreatedSecret(result.rawSecret);
+      setGatewayTestKey(result.rawSecret);
       setData(result.dashboard);
       setNewKeyName('');
-      showToast('Clave API generada', 'Copia tu clave ahora; por seguridad no volverá a mostrarse completa.');
+      showToast('Clave API generada', 'Copia tu clave ahora; ya quedó pre-cargada en el probador del Gateway.');
     } catch (err) {
       showToast('Error al crear clave', err.message);
     } finally {
       setCreatingKey(false);
+    }
+  };
+
+  const handleTestGateway = async (e) => {
+    e.preventDefault();
+    if (!gatewayTestPrompt.trim()) return;
+    setTestingGateway(true);
+    try {
+      const res = await dashboardApi.testGatewayCompletion({
+        apiKey: gatewayTestKey,
+        model: gatewayTestModel,
+        prompt: gatewayTestPrompt,
+      });
+      setGatewayTestResult(res);
+      if (res?.dashboard) {
+        setData(res.dashboard);
+      }
+      const charged = res?.ia_choose_billing?.charged_formatted || '$18 COP';
+      const remaining = formatCop(res?.ia_choose_billing?.remaining_balance_cop ?? 0);
+      showToast(
+        `Consulta procesada por ${res.model_name}`,
+        `Se descontaron ${charged} de tu billetera. Saldo restante: ${remaining}.`
+      );
+      robot.say(
+        'celebrate',
+        `Gateway API: ${res.model_name} respondió y descontó ${charged}`,
+        3500
+      );
+    } catch (err) {
+      showToast('Error en Gateway API', err.message);
+      robot.say('peek', err.message, 3200);
+    } finally {
+      setTestingGateway(false);
     }
   };
 
@@ -1033,26 +1113,6 @@ export default function DashboardPage({ user, onLogout, robot }) {
           </div>
 
           <div className="topbar-right-actions">
-            {data?.hasDemoData ? (
-              <button
-                type="button"
-                className="demo-status-pill is-active"
-                onClick={() => handleToggleDemoData('clear')}
-                title="Quitar los registros de demostración y ver solo tus consultas reales"
-              >
-                <span>Datos de prueba activos · Quitar demo</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="demo-status-pill"
-                onClick={() => handleToggleDemoData('load')}
-                title="Cargar actividad de ejemplo claramente identificada para probar gráficos y filtros"
-              >
-                <span>Cargar datos de prueba (Demo)</span>
-              </button>
-            )}
-
             <button
               type="button"
               className="topbar-quick-btn"
@@ -1181,7 +1241,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
                     <div>
                       <h2>Tu cuenta aún no registra consumo de modelos</h2>
                       <p>
-                        Dirígete a la sección <strong>Hacer pregunta</strong> en el menú lateral para escribir tu primera tarea y conocer el modelo ideal, o carga datos de demostración claramente etiquetados para explorar los gráficos.
+                        Dirígete a la sección <strong>Hacer pregunta</strong> en el menú lateral para escribir tu primera tarea y conocer el modelo ideal, o realiza una petición desde el Gateway API.
                       </p>
                     </div>
                     <div className="empty-banner-actions">
@@ -1191,13 +1251,6 @@ export default function DashboardPage({ user, onLogout, robot }) {
                         onClick={() => setActiveTab('ask')}
                       >
                         Ir a Hacer pregunta
-                      </button>
-                      <button
-                        type="button"
-                        className="demo-status-pill"
-                        onClick={() => handleToggleDemoData('load')}
-                      >
-                        Cargar datos de prueba (Demo)
                       </button>
                     </div>
                   </section>
@@ -1798,17 +1851,6 @@ export default function DashboardPage({ user, onLogout, robot }) {
 
                       <select
                         className="saas-select"
-                        value={activityOrigin}
-                        onChange={(e) => setActivityOrigin(e.target.value)}
-                        aria-label="Filtrar por origen de datos"
-                      >
-                        <option value="all">Todos los registros</option>
-                        <option value="real">Solo actividad real</option>
-                        <option value="demo">Solo datos de prueba</option>
-                      </select>
-
-                      <select
-                        className="saas-select"
                         value={activitySort}
                         onChange={(e) => setActivitySort(e.target.value)}
                         aria-label="Ordenar registros"
@@ -2007,18 +2049,12 @@ export default function DashboardPage({ user, onLogout, robot }) {
                         </p>
                       </div>
                       <span
-                        className={`availability-pill ${
-                          data?.wompi?.isConfigured ? 'is-online' : 'is-pilot'
-                        }`}
-                        title={
-                          data?.wompi?.isConfigured
-                            ? `Conectado a Wompi (${data.wompi.env})`
-                            : 'Simulador Sandbox activo mientras configuras tus llaves WOMPI en .env'
-                        }
+                        className="availability-pill is-online"
+                        title="Pasarela Web por URL activa con acreditación automática al retornar"
                       >
                         {data?.wompi?.isConfigured
                           ? `Wompi ${data.wompi.env === 'production' ? 'Producción' : 'Sandbox'}`
-                          : 'Wompi Sandbox Local'}
+                          : 'Pasarela Wompi por URL Activa'}
                       </span>
                     </div>
 
@@ -2095,8 +2131,8 @@ export default function DashboardPage({ user, onLogout, robot }) {
 
                       <button type="submit" className="btn-primary-green" disabled={processingTopup}>
                         {processingTopup
-                          ? 'Conectando con pasarela Wompi...'
-                          : `Pagar ${formatCop(topupAmount)} con Wompi (${topupMethod})`}
+                          ? 'Redirigiendo a la URL de pago Wompi...'
+                          : `Ir a la Pasarela Wompi (${topupMethod}) · ${formatCop(topupAmount)}`}
                       </button>
                     </form>
                   </section>
@@ -2112,6 +2148,12 @@ export default function DashboardPage({ user, onLogout, robot }) {
                       <div className="billing-summary-row">
                         <span>Saldo disponible hoy</span>
                         <strong className="positive-amount">{formatCop(kpis.balanceCop)}</strong>
+                      </div>
+                      <div className="billing-summary-row">
+                        <span>Total recargado en tu cuenta (Wompi + Bono)</span>
+                        <strong className="positive-amount">
+                          {formatCop(kpis.totalTopupCop ?? kpis.balanceCop + kpis.totalSpendCop)}
+                        </strong>
                       </div>
                       <div className="billing-summary-row">
                         <span>Total debitado por consumo de API</span>
@@ -2259,21 +2301,36 @@ export default function DashboardPage({ user, onLogout, robot }) {
             )}
 
             {/* =================================================================
-             * SECCIÓN 6: CLAVES API (API KEYS)
+             * SECCIÓN 6: CLAVES API Y GATEWAY DE PROVEEDORES (MOONSHOT KIMI)
              * ================================================================= */}
             {activeTab === 'apikeys' && (
               <div className="dashboard-section-stack">
                 <section className="saas-panel-card">
-                  <h2 className="panel-title">Gestión de Claves API</h2>
-                  <p className="panel-subtitle">
-                    Crea claves para conectar tus scripts o proyectos académicos al enrutador multimodelo de IA CHOOSE. Por seguridad, solo almacenamos el hash SHA-256 de cada clave.
-                  </p>
+                  <div className="wompi-header-row">
+                    <div>
+                      <h2 className="panel-title">
+                        Gateway de API para Clientes (`iac_live_...`) · Moonshot Kimi
+                      </h2>
+                      <p className="panel-subtitle">
+                        Comparte acceso a Moonshot Kimi K2 y al enrutador de IA CHOOSE sin exponer tu llave maestra del proveedor. Cada llamada descuenta automáticamente en COP del saldo recargado por el cliente.
+                      </p>
+                    </div>
+                    <span
+                      className={`availability-pill ${
+                        data?.moonshot?.isConfigured ? 'is-online' : 'is-pilot'
+                      }`}
+                    >
+                      {data?.moonshot?.isConfigured
+                        ? `Moonshot Kimi API Activa (${data.moonshot.modelId})`
+                        : 'Moonshot Kimi · Modo Piloto (Configura MOONSHOT_API_KEY en .env)'}
+                    </span>
+                  </div>
 
                   <form className="api-key-create-bar" onSubmit={handleCreateApiKey}>
                     <input
                       type="text"
                       className="saas-input"
-                      placeholder="Nombre de la clave (ej. Proyecto Tesis, Script Python Local)..."
+                      placeholder="Nombre de la clave (ej. Cliente App Móvil, Proyecto Tesis, Script Python)..."
                       value={newKeyName}
                       onChange={(e) => setNewKeyName(e.target.value)}
                       required
@@ -2327,7 +2384,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
                         {apiKeys.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="empty-table-cell">
-                              Aún no has creado claves API en tu cuenta.
+                              Aún no has creado claves API en tu cuenta. Crea una arriba para probar el Gateway.
                             </td>
                           </tr>
                         ) : (
@@ -2370,6 +2427,130 @@ export default function DashboardPage({ user, onLogout, robot }) {
                     </table>
                   </div>
                 </section>
+
+                {/* Probador en vivo del Gateway + Guía de consumo para clientes */}
+                <div className="usage-two-col-grid">
+                  <section className="saas-panel-card">
+                    <h3 className="panel-title">Probador en Vivo del Gateway (`/api/v1/chat/completions`)</h3>
+                    <p className="panel-subtitle">
+                      Simula una petición de un cliente externo hacia Moonshot Kimi y verifica cómo se descuenta en tiempo real de tu saldo disponible ({formatCop(kpis.balanceCop)}).
+                    </p>
+
+                    <form className="topup-form" onSubmit={handleTestGateway}>
+                      <div className="topup-fields-grid">
+                        <label className="saas-form-label">
+                          <span>Clave API Cliente (`iac_live_...`)</span>
+                          <input
+                            type="text"
+                            className="saas-input"
+                            placeholder="Opcional: pega tu iac_live_... (o usa tu sesión)"
+                            value={gatewayTestKey}
+                            onChange={(e) => setGatewayTestKey(e.target.value)}
+                          />
+                        </label>
+
+                        <label className="saas-form-label">
+                          <span>Modelo solicitado al Gateway</span>
+                          <select
+                            className="saas-select full-width"
+                            value={gatewayTestModel}
+                            onChange={(e) => setGatewayTestModel(e.target.value)}
+                          >
+                            <option value="kimi-k2">kimi-k2 (Moonshot Kimi K2 · $18 COP base)</option>
+                            <option value="auto">auto (Enrutador Inteligente IA CHOOSE)</option>
+                            <option value="gemini-flash">gemini-flash (Gemini 2.5 Flash · $9 COP)</option>
+                            <option value="deepseek-r1">deepseek-r1 (DeepSeek R1 · $14 COP)</option>
+                            <option value="claude-sonnet">claude-sonnet (Claude 3.7 Sonnet · $58 COP)</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <label className="saas-form-label">
+                        <span>Mensaje (`messages[0].content`)</span>
+                        <textarea
+                          rows={3}
+                          className="saas-input"
+                          value={gatewayTestPrompt}
+                          onChange={(e) => setGatewayTestPrompt(e.target.value)}
+                          required
+                        />
+                      </label>
+
+                      <button type="submit" className="btn-primary-green" disabled={testingGateway}>
+                        {testingGateway
+                          ? 'Invocando Moonshot Kimi y debitando saldo...'
+                          : 'Ejecutar Petición API y Descontar Saldo en COP'}
+                      </button>
+                    </form>
+
+                    {gatewayTestResult && (
+                      <div className="wompi-integrity-box">
+                        <span>
+                          Respuesta de <strong>{gatewayTestResult.model_name}</strong> · Cobro:{' '}
+                          <strong className="positive-amount">
+                            {gatewayTestResult.ia_choose_billing?.charged_formatted}
+                          </strong>{' '}
+                          · Saldo restante:{' '}
+                          <strong>
+                            {formatCop(gatewayTestResult.ia_choose_billing?.remaining_balance_cop)}
+                          </strong>
+                        </span>
+                        <code>
+                          {JSON.stringify(
+                            {
+                              id: gatewayTestResult.id,
+                              model: gatewayTestResult.model,
+                              reply: gatewayTestResult.choices?.[0]?.message?.content?.slice(0, 180) + '...',
+                              usage: gatewayTestResult.usage,
+                              ia_choose_billing: gatewayTestResult.ia_choose_billing,
+                            },
+                            null,
+                            2
+                          )}
+                        </code>
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="saas-panel-card">
+                    <h3 className="panel-title">Cómo tus clientes consumen la API de Moonshot Kimi</h3>
+                    <p className="panel-subtitle">
+                      El endpoint de IA CHOOSE es 100 % compatible con el SDK de OpenAI / Moonshot. Tus clientes usan su clave <code>iac_live_...</code> y nunca ven tu llave maestra.
+                    </p>
+
+                    <div className="msg-code-block">
+                      <div className="msg-code-header">
+                        <span>Python (SDK OpenAI / Moonshot)</span>
+                      </div>
+                      <pre>
+                        <code>{`from openai import OpenAI
+
+client = OpenAI(
+    api_key="${justCreatedSecret || 'iac_live_tu_clave_de_cliente'}",
+    base_url="${window.location.origin}/api/v1"
+)
+
+res = client.chat.completions.create(
+    model="kimi-k2", # o "auto" para enrutamiento inteligente
+    messages=[{"role": "user", "content": "Resume este artículo académico"}]
+)
+print(res.choices[0].message.content)`}</code>
+                      </pre>
+                    </div>
+
+                    <div className="msg-code-block">
+                      <div className="msg-code-header">
+                        <span>cURL / Terminal</span>
+                      </div>
+                      <pre>
+                        <code>{`curl -X POST ${window.location.origin}/api/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ${justCreatedSecret || 'iac_live_tu_clave_de_cliente'}" \\
+  -d '{"model":"kimi-k2","messages":[{"role":"user","content":"Hola Kimi"}]}'`}</code>
+                      </pre>
+                    </div>
+                  </section>
+                </div>
               </div>
             )}
 

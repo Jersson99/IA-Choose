@@ -14,8 +14,17 @@ router.post('/dashboard/recommend-task', (req, res) => {
   res.json(dashboardService.recommendTask(req.body?.prompt));
 });
 
-router.post('/dashboard/execute-task', (req, res) => {
-  res.json(dashboardService.executeTask(req.userId, req.body?.prompt, req.body?.modelName));
+router.post('/dashboard/execute-task', async (req, res, next) => {
+  try {
+    const result = await dashboardService.executeTask(
+      req.userId,
+      req.body?.prompt,
+      req.body?.modelName
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/dashboard/topup', (req, res) => {

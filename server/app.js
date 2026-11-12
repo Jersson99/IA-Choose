@@ -3,6 +3,7 @@ import authRoutes from './routes/authRoutes.js';
 import routerRoutes from './routes/routerRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import gatewayRoutes from './routes/gatewayRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 export function createApp() {
@@ -12,6 +13,7 @@ export function createApp() {
   app.use('/api', routerRoutes);
   app.use('/api', dashboardRoutes);
   app.use('/api', paymentRoutes);
+  app.use('/api', gatewayRoutes);
   app.use(errorHandler);
   return app;
 }

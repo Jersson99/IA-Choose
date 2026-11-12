@@ -41,4 +41,16 @@ export const config = {
       return Boolean(this.publicKey && this.integritySecret);
     },
   },
+  providers: {
+    moonshot: {
+      apiKey: (process.env.MOONSHOT_API_KEY || '').trim(),
+      baseUrl: (process.env.MOONSHOT_BASE_URL || 'https://api.moonshot.ai/v1')
+        .trim()
+        .replace(/\/+$/, ''),
+      modelId: (process.env.MOONSHOT_MODEL_ID || 'kimi-k2-0711-preview').trim(),
+      get isConfigured() {
+        return Boolean(this.apiKey);
+      },
+    },
+  },
 };

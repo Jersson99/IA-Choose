@@ -17,8 +17,11 @@ export const dashboardApi = {
   topUp: (amountCop, method) =>
     apiRequest('/dashboard/topup', withToken({ method: 'POST', body: { amountCop, method } })),
 
-  createWompiCheckout: (amountCop, method) =>
-    apiRequest('/payments/wompi/checkout', withToken({ method: 'POST', body: { amountCop, method } })),
+  createWompiCheckout: (amountCop, method, paymentLinkUrl = '') =>
+    apiRequest(
+      '/payments/wompi/checkout',
+      withToken({ method: 'POST', body: { amountCop, method, paymentLinkUrl } })
+    ),
 
   verifyWompiPayment: (payload) =>
     apiRequest('/payments/wompi/verify', withToken({ method: 'POST', body: payload })),
@@ -28,6 +31,16 @@ export const dashboardApi = {
 
   revokeApiKey: (id) =>
     apiRequest(`/dashboard/api-keys/${id}`, withToken({ method: 'DELETE' })),
+
+  testGatewayCompletion: ({ apiKey, model, prompt }) =>
+    apiRequest('/v1/chat/completions', {
+      method: 'POST',
+      token: apiKey && apiKey.trim() ? apiKey.trim() : tokenStorage.get(),
+      body: {
+        model: model || 'kimi-k2',
+        messages: [{ role: 'user', content: prompt }],
+      },
+    }),
 
   updateSettings: (payload) =>
     apiRequest('/dashboard/settings', withToken({ method: 'PUT', body: payload })),

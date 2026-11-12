@@ -32,7 +32,7 @@ export const wompiService = {
   /**
    * 1. Crea una orden de recarga en estado PENDING y genera la firma SHA-256 de integridad para Wompi
    */
-  createCheckoutSession(userId, { amountCop, method }) {
+  createCheckoutSession(userId, { amountCop, method, paymentLinkUrl }) {
     const amount = Math.round(Number(amountCop));
     if (!Number.isFinite(amount) || amount < 2000 || amount > 2000000) {
       throw new HttpError(400, 'Ingresa un monto de recarga válido entre $2.000 y $2.000.000 COP');
@@ -69,11 +69,29 @@ export const wompiService = {
     );
 
     const customerEmail = user.email.includes('@') ? user.email : `${user.email}@iachoose.co`;
+    const cleanExternalLink = String(
+      paymentLinkUrl || process.env.WOMPI_PAYMENT_LINK_URL || ''
+    ).trim();
+
+    const query = new URLSearchParams({
+      reference,
+      amount: String(amount),
+      currency,
+      method: methodMeta.cleanMethod,
+      email: customerEmail,
+      name: user.name,
+    });
+    if (cleanExternalLink) {
+      query.set('external_link', cleanExternalLink);
+    }
+    const checkoutUrl = `/wompi-gateway?${query.toString()}`;
 
     return {
-      mode: config.wompi.isConfigured ? 'wompi_widget' : 'local_sandbox',
+      mode: config.wompi.isConfigured ? 'wompi_widget' : 'wompi_url',
+      checkoutUrl,
+      externalPaymentLink: cleanExternalLink || null,
       environment: config.wompi.env,
-      publicKey: config.wompi.publicKey || 'pub_test_local_simulator',
+      publicKey: config.wompi.publicKey || 'pub_url_checkout',
       currency,
       amountCop: amount,
       amountInCents,

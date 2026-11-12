@@ -3336,3 +3336,259 @@ input {
   font-size: 0.83rem;
 }
 
+/* PÁGINA DEDICADA DE PASARELA DE PAGO WOMPI POR URL (/wompi-gateway) */
+.wompi-url-viewport {
+  min-height: 100vh;
+  width: 100%;
+  background: radial-gradient(circle at top right, #132b21 0%, #091410 65%, #060d0a 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.wompi-url-container {
+  width: 100%;
+  max-width: 980px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.wompi-url-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 22px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(153, 240, 24, 0.28);
+}
+
+.wompi-brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.25rem;
+}
+
+.wompi-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--lime-robot);
+  box-shadow: 0 0 12px var(--lime-robot);
+}
+
+.wompi-by-bancolombia {
+  font-size: 0.82rem;
+  color: rgba(218, 226, 222, 0.82);
+  font-weight: 500;
+}
+
+.wompi-secure-pill {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.76rem;
+  color: #a7f3d0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(24, 207, 163, 0.14);
+  border: 1px solid rgba(24, 207, 163, 0.35);
+}
+
+.wompi-url-grid {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.wompi-summary-card,
+.wompi-payment-card {
+  background: rgba(14, 27, 21, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+}
+
+.wompi-merchant-kicker {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--lime-robot);
+  letter-spacing: 0.05em;
+}
+
+.wompi-merchant-name {
+  font-size: 1.3rem;
+  margin: 0;
+  color: #ffffff;
+}
+
+.wompi-merchant-desc {
+  margin: 0;
+  font-size: 0.83rem;
+  color: rgba(218, 226, 222, 0.8);
+  line-height: 1.45;
+}
+
+.wompi-total-box {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(47, 208, 88, 0.14);
+  border: 1px solid rgba(153, 240, 24, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wompi-total-box span {
+  font-size: 0.78rem;
+  color: rgba(218, 226, 222, 0.86);
+}
+
+.wompi-total-box strong {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 1.7rem;
+  color: var(--lime-robot);
+}
+
+.wompi-total-box small {
+  font-size: 0.72rem;
+  color: rgba(218, 226, 222, 0.72);
+}
+
+.wompi-meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wompi-meta-list div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wompi-meta-list span {
+  font-size: 0.74rem;
+  color: rgba(218, 226, 222, 0.7);
+}
+
+.wompi-meta-list strong,
+.wompi-meta-list code {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.8rem;
+  color: #ffffff;
+  word-break: break-all;
+}
+
+.wompi-card-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.wompi-card-sub {
+  margin: 0;
+  font-size: 0.84rem;
+  color: rgba(218, 226, 222, 0.82);
+  line-height: 1.45;
+}
+
+.wompi-url-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.wompi-url-tab {
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.wompi-url-tab.active {
+  background: rgba(47, 208, 88, 0.22);
+  border-color: var(--lime-robot);
+  color: var(--lime-robot);
+}
+
+.wompi-url-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.wompi-url-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.wompi-pay-submit-btn {
+  width: 100%;
+  padding: 14px 18px;
+  font-size: 0.95rem;
+}
+
+.wompi-url-secondary-btns {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.wompi-cancel-link {
+  font-size: 0.82rem;
+  color: rgba(218, 226, 222, 0.78);
+  text-decoration: underline;
+}
+
+.wompi-processing-state {
+  padding: 42px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.wompi-spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 4px solid rgba(153, 240, 24, 0.22);
+  border-top-color: var(--lime-robot);
+  animation: wompiSpin 0.8s linear infinite;
+}
+
+@keyframes wompiSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 860px) {
+  .wompi-url-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+

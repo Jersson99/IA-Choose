@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { db } from '../db.js';
 import { HttpError } from '../errors.js';
+import { llmProviderService } from './llmProviderService.js';
 import { routerService } from './routerService.js';
 
 function ensureWallet(userId) {
@@ -137,6 +138,13 @@ export const dashboardService = {
     const avgCostPerRequestCop =
       totalRequests > 0 ? Math.round((totalSpendCop / totalRequests) * 10) / 10 : 0;
 
+    let totalTopupCop = 0;
+    for (const tx of transactions) {
+      if (tx.type === 'topup' && tx.status === 'completed' && Number(tx.amount_cop) > 0) {
+        totalTopupCop += Number(tx.amount_cop);
+      }
+    }
+
     return {
       user,
       wallet: {
@@ -151,6 +159,7 @@ export const dashboardService = {
         weekSpendCop,
         monthSpendCop,
         totalSpendCop,
+        totalTopupCop,
         totalRequests,
         inputTokens,
         outputTokens,
@@ -161,6 +170,11 @@ export const dashboardService = {
       wompi: {
         isConfigured: config.wompi.isConfigured,
         env: config.wompi.env,
+      },
+      moonshot: {
+        isConfigured: config.providers.moonshot.isConfigured,
+        modelId: config.providers.moonshot.modelId,
+        baseUrl: config.providers.moonshot.baseUrl,
       },
       logs,
       transactions,
@@ -178,16 +192,16 @@ export const dashboardService = {
     };
   },
 
-  executeTask(userId, promptText, requestedModelName = null) {
+  async executeTask(userId, promptText, requestedModelName = null, options = {}) {
     const cleanPrompt = String(promptText || '').trim();
     if (!cleanPrompt) throw new HttpError(400, 'Escribe primero tu tarea para procesarla');
 
     const wallet = ensureWallet(userId);
     const rec = routerService.recommend(cleanPrompt);
 
-    // Si el usuario especificó un modelo en el workspace (o cambió de modelo), usamos ese modelo
+    // Si el usuario o cliente API especificó un modelo (y no pidió 'auto'), usamos ese modelo
     let modelRow = null;
-    if (requestedModelName) {
+    if (requestedModelName && requestedModelName !== 'auto') {
       modelRow = db
         .prepare('SELECT * FROM ai_models_benchmarks WHERE name = ? OR slug = ?')
         .get(requestedModelName, requestedModelName);
@@ -198,11 +212,24 @@ export const dashboardService = {
         db.prepare('SELECT * FROM ai_models_benchmarks ORDER BY cost_cop ASC LIMIT 1').get();
     }
 
-    // Estimación proporcional de tokens procesados según longitud y complejidad de la tarea
-    const words = cleanPrompt.split(/\s+/).length;
-    const complexityFactor = rec.analysis?.complexity || 0.3;
-    const inputTokens = Math.max(48, Math.round(words * 18 + complexityFactor * 620));
-    const outputTokens = Math.max(120, Math.round(180 + complexityFactor * 940));
+    // Verificar que el saldo disponible cubra al menos la tarifa base del modelo antes de llamar al proveedor
+    if (wallet.balance_cop < modelRow.cost_cop) {
+      throw new HttpError(
+        402,
+        `Saldo insuficiente ($${wallet.balance_cop} COP). Recarga tu cuenta con Wompi en la sección Transacciones y saldo.`
+      );
+    }
+
+    const complexityFactor = rec.analysis?.complexity || 0.35;
+    const providerResult = await llmProviderService.generateCompletion({
+      modelRow,
+      messages: options.messages || null,
+      promptText: cleanPrompt,
+      domain: rec.analysis?.domain,
+      complexity: complexityFactor,
+    });
+
+    const { inputTokens, outputTokens, latencyMs, reply, liveProvider } = providerResult;
 
     const computedCost = Math.max(
       modelRow.cost_cop,
@@ -215,61 +242,87 @@ export const dashboardService = {
     if (wallet.balance_cop < computedCost) {
       throw new HttpError(
         402,
-        `Saldo insuficiente ($${wallet.balance_cop} COP). Recarga tu cuenta en la sección Transacciones y saldo.`
+        `Saldo insuficiente ($${wallet.balance_cop} COP) para cubrir el consumo de ${inputTokens + outputTokens} tokens ($${computedCost} COP). Recarga con Wompi.`
       );
     }
 
     const now = new Date().toISOString();
-    const latencyMs = Math.round(modelRow.latency_sec * 1000 + (Math.random() * 180 - 90));
     const summary = cleanPrompt.length > 90 ? `${cleanPrompt.slice(0, 87)}...` : cleanPrompt;
+    const ref = `API-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+    const methodLabel = options.apiKeyId ? 'Gateway API (iac_live)' : 'Consumo API';
 
-    db.prepare('UPDATE user_wallets SET balance_cop = balance_cop - ?, updated_at = ? WHERE user_id = ?').run(
-      computedCost,
-      now,
-      userId
-    );
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const freshWallet = db
+        .prepare('SELECT balance_cop FROM user_wallets WHERE user_id = ?')
+        .get(userId);
+      if (!freshWallet || freshWallet.balance_cop < computedCost) {
+        throw new HttpError(402, 'Saldo insuficiente en tu billetera IA CHOOSE');
+      }
 
-    db.prepare(`
-      INSERT INTO usage_logs (
-        user_id, prompt_summary, model_slug, model_name, provider, domain,
-        input_tokens, output_tokens, cost_cop, latency_ms, status, is_demo, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 0, ?)
-    `).run(
-      userId,
-      summary,
-      modelRow.slug,
-      modelRow.name,
-      modelRow.provider,
-      rec.analysis.domainLabel,
-      inputTokens,
-      outputTokens,
-      computedCost,
-      latencyMs,
-      now
-    );
+      db.prepare(
+        'UPDATE user_wallets SET balance_cop = balance_cop - ?, updated_at = ? WHERE user_id = ?'
+      ).run(computedCost, now, userId);
 
-    const ref = `API-${Date.now().toString().slice(-6)}`;
-    db.prepare(`
-      INSERT INTO billing_transactions (
-        user_id, reference, type, method, amount_cop, description, status, is_demo, created_at
-      ) VALUES (?, ?, 'usage_debit', 'Consumo API', ?, ?, 'completed', 0, ?)
-    `).run(
-      userId,
-      ref,
-      -computedCost,
-      `Consulta ${modelRow.name} (${inputTokens + outputTokens} tokens)`,
-      now
-    );
+      db.prepare(`
+        INSERT INTO usage_logs (
+          user_id, prompt_summary, model_slug, model_name, provider, domain,
+          input_tokens, output_tokens, cost_cop, latency_ms, status, is_demo, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 0, ?)
+      `).run(
+        userId,
+        summary,
+        modelRow.slug,
+        modelRow.name,
+        modelRow.provider,
+        rec.analysis.domainLabel,
+        inputTokens,
+        outputTokens,
+        computedCost,
+        latencyMs,
+        now
+      );
 
-    db.prepare(`
-      UPDATE user_api_keys
-      SET last_used_at = ?
-      WHERE id = (
-        SELECT id FROM user_api_keys WHERE user_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1
-      )
-    `).run(now, userId);
+      db.prepare(`
+        INSERT INTO billing_transactions (
+          user_id, reference, type, method, amount_cop, description, status, is_demo, created_at, updated_at
+        ) VALUES (?, ?, 'usage_debit', ?, ?, ?, 'completed', 0, ?, ?)
+      `).run(
+        userId,
+        ref,
+        methodLabel,
+        -computedCost,
+        `Consulta ${modelRow.name} (${inputTokens + outputTokens} tokens)`,
+        now,
+        now
+      );
+
+      if (options.apiKeyId) {
+        db.prepare('UPDATE user_api_keys SET last_used_at = ? WHERE id = ?').run(
+          now,
+          options.apiKeyId
+        );
+      } else {
+        db.prepare(`
+          UPDATE user_api_keys
+          SET last_used_at = ?
+          WHERE id = (
+            SELECT id FROM user_api_keys WHERE user_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1
+          )
+        `).run(now, userId);
+      }
+
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+
+    const updatedDashboard = this.getOverviewData(userId);
 
     return {
+      reference: ref,
+      liveProvider,
       recommendation: {
         ...rec,
         cost: `$${computedCost} COP`,
@@ -280,10 +333,11 @@ export const dashboardService = {
       provider: modelRow.provider,
       cost: `$${computedCost} COP`,
       costCop: computedCost,
+      remainingBalanceCop: updatedDashboard.wallet.balanceCop,
       tokens: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens },
       latencyMs,
-      reply: generateRealisticResponse(cleanPrompt, modelRow, rec.analysis?.domain),
-      dashboard: this.getOverviewData(userId),
+      reply,
+      dashboard: updatedDashboard,
     };
   },
 

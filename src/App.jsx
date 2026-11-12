@@ -2,11 +2,16 @@ import { useAuth } from './hooks/useAuth.js';
 import { useRobot } from './hooks/useRobot.js';
 import AuthPage from './pages/AuthPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
+import WompiGatewayPage from './pages/WompiGatewayPage.jsx';
 
-// Orquesta: decide qué pantalla mostrar según haya sesión o no
+// Orquesta: decide qué pantalla mostrar según haya sesión o si está en la URL de la pasarela Wompi
 export default function App() {
   const auth = useAuth();
   const robot = useRobot({ isAuthenticated: Boolean(auth.user) });
+
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/wompi-gateway')) {
+    return <WompiGatewayPage />;
+  }
 
   // Evita mostrar el login un instante si ya había una sesión guardada
   if (auth.checking) return null;

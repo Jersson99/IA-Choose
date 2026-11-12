@@ -85,6 +85,12 @@ if (!txColumns.includes('updated_at')) {
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_billing_tx_reference ON billing_transactions(reference)');
 
+// Eliminar registros de demostración (is_demo = 1) para dejar únicamente datos reales
+db.exec(`
+  DELETE FROM usage_logs WHERE is_demo = 1;
+  DELETE FROM billing_transactions WHERE is_demo = 1;
+`);
+
 // Asegurar esquema actualizado para ai_models_benchmarks (incluyendo arena_writing)
 const tableColumns = db
   .prepare("PRAGMA table_info('ai_models_benchmarks')")

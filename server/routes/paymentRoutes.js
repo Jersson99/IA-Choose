@@ -9,6 +9,7 @@ router.post('/payments/wompi/checkout', requireAuth, (req, res) => {
   const session = wompiService.createCheckoutSession(req.userId, {
     amountCop: req.body?.amountCop,
     method: req.body?.method,
+    paymentLinkUrl: req.body?.paymentLinkUrl,
   });
   res.status(201).json(session);
 });
