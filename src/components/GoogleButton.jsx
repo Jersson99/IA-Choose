@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
-const CLIENT_ID = import.meta.env.GOOGLE_CLIENT_ID;
+const RAW_CLIENT_ID =
+  import.meta.env.GOOGLE_CLIENT_ID ||
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '238513514705-ltefem5gm2qoddu174v2qi9r1t2uj3lb.apps.googleusercontent.com';
+const CLIENT_ID = String(RAW_CLIENT_ID)
+  .trim()
+  .replace(/^["']|["']$/g, '')
+  .trim();
 let scriptPromise;
 
 // Carga una sola vez la librería oficial de Google Identity Services

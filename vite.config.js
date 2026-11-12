@@ -8,6 +8,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: 'localhost',
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    },
     proxy: {
       '/api': 'http://127.0.0.1:3001'
     }

@@ -1,16 +1,34 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const DATA_DIR = path.join(__dirname, 'data');
+// En Vercel (serverless) el sistema de archivos del código es de solo lectura; usamos /tmp
+export const DATA_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'ia-choose-data')
+  : path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// La clave de firma de tokens se genera una vez y se guarda en server/data (ignorada por git)
+function cleanEnvValue(val = '') {
+  return String(val || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .trim();
+}
+
+// La clave de firma de tokens se genera una vez y se guarda en DATA_DIR
 function loadJwtSecret() {
-  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (process.env.JWT_SECRET) return cleanEnvValue(process.env.JWT_SECRET);
+  if (process.env.VERCEL) {
+    // En Vercel mantenemos un secreto determinístico entre invocaciones serverless si no se definió JWT_SECRET
+    return crypto
+      .createHash('sha256')
+      .update(`ia-choose-vercel-${process.env.GOOGLE_CLIENT_ID || 'default-secret'}`)
+      .digest('hex');
+  }
   const secretFile = path.join(DATA_DIR, 'jwt.secret');
   if (!fs.existsSync(secretFile)) {
     fs.writeFileSync(secretFile, crypto.randomBytes(48).toString('hex'));
@@ -25,7 +43,11 @@ export const config = {
   jwtExpiresIn: '7d',
   bcryptRounds: 10,
   minPasswordLength: 6,
-  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleClientId: cleanEnvValue(
+    process.env.GOOGLE_CLIENT_ID ||
+      process.env.VITE_GOOGLE_CLIENT_ID ||
+      '238513514705-ltefem5gm2qoddu174v2qi9r1t2uj3lb.apps.googleusercontent.com'
+  ),
   wompi: {
     env: (process.env.WOMPI_ENV || 'sandbox').trim().toLowerCase(),
     publicKey: (process.env.WOMPI_PUBLIC_KEY || '').trim(),
