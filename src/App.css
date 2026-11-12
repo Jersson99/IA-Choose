@@ -3193,3 +3193,146 @@ input {
     min-width: 0;
   }
 }
+
+/* PASARELA DE PAGOS WOMPI COLOMBIA (NEQUI, BANCOLOMBIA, PSE) */
+.wompi-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wompi-methods-pills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.wompi-method-chip {
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.wompi-method-chip:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.wompi-method-chip.is-selected {
+  background: rgba(47, 208, 88, 0.2);
+  border-color: var(--lime-robot);
+  color: var(--lime-robot);
+}
+
+.status-pending {
+  background: rgba(253, 230, 138, 0.18);
+  color: #FDE68A;
+}
+
+.declined-amount {
+  color: rgba(252, 165, 165, 0.65);
+  text-decoration: line-through;
+}
+
+.resume-tx-btn {
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(153, 240, 24, 0.45);
+  background: rgba(47, 208, 88, 0.18);
+  color: var(--lime-robot);
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.71rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.resume-tx-btn:hover {
+  background: rgba(47, 208, 88, 0.32);
+}
+
+.wompi-checkout-modal {
+  max-width: 580px;
+}
+
+.wompi-sim-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.wompi-sim-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wompi-sim-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: rgba(218, 226, 222, 0.78);
+  line-height: 1.45;
+}
+
+.wompi-bank-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wompi-bank-card strong {
+  color: var(--lime-robot);
+  font-size: 0.9rem;
+}
+
+.wompi-bank-card p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(218, 226, 222, 0.85);
+  line-height: 1.45;
+}
+
+.wompi-integrity-box {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(9, 17, 13, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wompi-integrity-box span {
+  font-size: 0.72rem;
+  color: rgba(218, 226, 222, 0.72);
+}
+
+.wompi-integrity-box code {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 0.72rem;
+  color: #A7F3D0;
+  word-break: break-all;
+}
+
+.wompi-sim-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.wompi-decline-btn {
+  padding: 12px 16px;
+  font-size: 0.83rem;
+}
+

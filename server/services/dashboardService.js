@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { config } from '../config.js';
 import { db } from '../db.js';
 import { HttpError } from '../errors.js';
 import { routerService } from './routerService.js';
@@ -157,6 +158,10 @@ export const dashboardService = {
         avgCostPerRequestCop,
       },
       hasDemoData,
+      wompi: {
+        isConfigured: config.wompi.isConfigured,
+        env: config.wompi.env,
+      },
       logs,
       transactions,
       apiKeys,

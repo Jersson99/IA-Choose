@@ -313,11 +313,16 @@ export default function DashboardPage({ user, onLogout, robot }) {
   const [modelSearch, setModelSearch] = useState('');
   const [modelTierFilter, setModelTierFilter] = useState('all');
 
-  // Estados de la sección Billing (Recargas y transacciones)
+  // Estados de la sección Billing (Recargas con Pasarela Wompi y transacciones)
   const [topupAmount, setTopupAmount] = useState(15000);
   const [topupMethod, setTopupMethod] = useState('Nequi');
   const [txTypeFilter, setTxTypeFilter] = useState('all'); // 'all' | 'topup' | 'usage_debit'
   const [processingTopup, setProcessingTopup] = useState(false);
+  const [wompiSimSession, setWompiSimSession] = useState(null);
+  const [simPhone, setSimPhone] = useState('3991111111');
+  const [simPseBank, setSimPseBank] = useState('Bancolombia');
+  const [simDocType, setSimDocType] = useState('CC');
+  const [simDocNumber, setSimDocNumber] = useState('1020304050');
 
   // Estados de la sección API Keys
   const [newKeyName, setNewKeyName] = useState('');
@@ -355,6 +360,30 @@ export default function DashboardPage({ user, onLogout, robot }) {
 
   useEffect(() => {
     fetchDashboard();
+
+    // Si Wompi redirige de vuelta tras un pago en PSE / Bancolombia con ?id=xxx
+    const params = new URLSearchParams(window.location.search);
+    const wompiTxId = params.get('id');
+    if (wompiTxId) {
+      setActiveTab('billing');
+      dashboardApi
+        .verifyWompiPayment({ transactionId: wompiTxId })
+        .then((res) => {
+          if (res?.dashboard) setData(res.dashboard);
+          if (res?.outcome?.status === 'completed') {
+            showToast(
+              'Pago aprobado por Wompi',
+              `Se acreditaron ${formatCop(res.outcome.amountCop)} a tu billetera.`
+            );
+          } else if (res?.outcome?.status === 'declined') {
+            showToast('Pago rechazado', 'La transacción fue declinada por la entidad financiera.');
+          }
+        })
+        .catch((err) => showToast('Aviso al verificar pago', err.message))
+        .finally(() => {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+    }
   }, []);
 
   const showToast = (title, detail) => {
@@ -543,22 +572,146 @@ export default function DashboardPage({ user, onLogout, robot }) {
     }
   };
 
+  const openWompiCheckoutForSession = (session) => {
+    if (session.mode === 'wompi_widget' && typeof window.WidgetCheckout === 'function') {
+      const checkout = new window.WidgetCheckout({
+        currency: session.currency,
+        amountInCents: session.amountInCents,
+        reference: session.reference,
+        publicKey: session.publicKey,
+        signature: { integrity: session.signature.integrity },
+        redirectUrl: window.location.origin,
+        customerData: {
+          email: session.customerData?.email,
+          fullName: session.customerData?.fullName,
+        },
+      });
+
+      robot.say(
+        'peek',
+        `Completa tu recarga de ${formatCop(session.amountCop)} en la ventana de Wompi...`,
+        3800
+      );
+
+      checkout.open(async (result) => {
+        const transaction = result?.transaction;
+        if (!transaction?.id) return;
+        try {
+          const verified = await dashboardApi.verifyWompiPayment({
+            transactionId: transaction.id,
+            reference: session.reference,
+          });
+          if (verified?.dashboard) setData(verified.dashboard);
+
+          if (verified?.outcome?.status === 'completed') {
+            showToast(
+              '¡Recarga Wompi aprobada!',
+              `Se abonaron ${formatCop(verified.outcome.amountCop)} vía ${session.method} a tu billetera.`
+            );
+            robot.say(
+              'celebrate',
+              `¡Pago aprobado! +${formatCop(verified.outcome.amountCop)} disponibles`,
+              3500
+            );
+          } else if (verified?.outcome?.status === 'declined') {
+            showToast(
+              'Transacción declinada',
+              'El pago no fue aprobado por la entidad bancaria o Nequi.'
+            );
+            robot.say('peek', 'El pago fue declinado. Tu saldo no sufrió cargos.', 3200);
+          }
+        } catch (verifyErr) {
+          showToast('Error al verificar con Wompi', verifyErr.message);
+        }
+      });
+    } else {
+      // Modo respaldo: abrir el Simulador Interactivo de Wompi Sandbox
+      setWompiSimSession(session);
+      robot.say(
+        'wave',
+        `Pasarela Wompi Sandbox lista para ${session.method} (${formatCop(session.amountCop)})`,
+        3200
+      );
+    }
+  };
+
   const handleTopupSubmit = async (e) => {
     e.preventDefault();
     setProcessingTopup(true);
     try {
-      const updated = await dashboardApi.topUp(topupAmount, topupMethod);
-      setData(updated);
-      showToast(
-        'Recarga acreditada exitosamente',
-        `Se abonaron ${formatCop(topupAmount)} mediante ${topupMethod} a tu saldo disponible.`
-      );
-      robot.say('celebrate', `¡Saldo recargado con ${formatCop(topupAmount)} vía ${topupMethod}!`, 3200);
+      const session = await dashboardApi.createWompiCheckout(topupAmount, topupMethod);
+      if (session?.dashboard) {
+        setData(session.dashboard);
+      }
+      openWompiCheckoutForSession(session);
     } catch (err) {
-      showToast('Error en la recarga', err.message);
+      showToast('Error al iniciar pago en Wompi', err.message);
     } finally {
       setProcessingTopup(false);
     }
+  };
+
+  const handleCompleteSimulatedWompi = async (simulatedStatus) => {
+    if (!wompiSimSession) return;
+    setProcessingTopup(true);
+    try {
+      let detail = `Wompi ${wompiSimSession.method}`;
+      if (wompiSimSession.method === 'Nequi') {
+        detail = `Nequi cel. ${simPhone}`;
+      } else if (wompiSimSession.method === 'PSE') {
+        detail = `PSE · ${simPseBank} (${simDocType} ${simDocNumber})`;
+      } else if (wompiSimSession.method === 'Bancolombia') {
+        detail = 'Botón / Transferencia Bancolombia';
+      }
+
+      const verified = await dashboardApi.verifyWompiPayment({
+        reference: wompiSimSession.reference,
+        simulatedStatus,
+        simulatedDetail: detail,
+      });
+
+      if (verified?.dashboard) setData(verified.dashboard);
+      setWompiSimSession(null);
+
+      if (verified?.outcome?.status === 'completed') {
+        showToast(
+          '¡Pago Wompi acreditado!',
+          `Se abonaron ${formatCop(verified.outcome.amountCop)} (${detail}) a tu saldo disponible.`
+        );
+        robot.say(
+          'celebrate',
+          `¡Recarga exitosa de ${formatCop(verified.outcome.amountCop)} con ${wompiSimSession.method}!`,
+          3400
+        );
+      } else {
+        showToast(
+          'Transacción declinada en Wompi',
+          `La orden ${wompiSimSession.reference} quedó registrada como rechazada.`
+        );
+        robot.say('peek', 'Simulación de pago rechazado completada', 2800);
+      }
+    } catch (err) {
+      showToast('Error al confirmar pago', err.message);
+    } finally {
+      setProcessingTopup(false);
+    }
+  };
+
+  const handleResumePendingTx = (tx) => {
+    const methodClean = tx.method?.includes('Bancolombia')
+      ? 'Bancolombia'
+      : tx.method?.includes('PSE')
+      ? 'PSE'
+      : 'Nequi';
+    setWompiSimSession({
+      mode: 'local_sandbox',
+      environment: data?.wompi?.env || 'sandbox',
+      currency: 'COP',
+      amountCop: tx.amount_cop,
+      amountInCents: tx.amount_cop * 100,
+      reference: tx.reference,
+      method: methodClean,
+    });
   };
 
   const handleCreateApiKey = async (e) => {
@@ -1839,20 +1992,38 @@ export default function DashboardPage({ user, onLogout, robot }) {
             )}
 
             {/* =================================================================
-             * SECCIÓN 5: TRANSACCIONES Y SALDO (BILLING)
+             * SECCIÓN 5: TRANSACCIONES Y SALDO (BILLING / WOMPI)
              * ================================================================= */}
             {activeTab === 'billing' && (
               <div className="dashboard-section-stack">
                 <div className="usage-two-col-grid">
-                  {/* Panel de recarga de saldo prepago */}
+                  {/* Panel de recarga de saldo prepago con Wompi */}
                   <section className="saas-panel-card">
-                    <h2 className="panel-title">Recargar saldo prepago en pesos</h2>
-                    <p className="panel-subtitle">
-                      Sin suscripciones ni cobros automáticos. Recarga únicamente lo que necesites mediante Nequi o PSE.
-                    </p>
+                    <div className="wompi-header-row">
+                      <div>
+                        <h2 className="panel-title">Recargar billetera con Wompi Colombia</h2>
+                        <p className="panel-subtitle">
+                          Sin suscripciones ni cobros automáticos. Recarga al instante en pesos mediante Nequi, Bancolombia o PSE.
+                        </p>
+                      </div>
+                      <span
+                        className={`availability-pill ${
+                          data?.wompi?.isConfigured ? 'is-online' : 'is-pilot'
+                        }`}
+                        title={
+                          data?.wompi?.isConfigured
+                            ? `Conectado a Wompi (${data.wompi.env})`
+                            : 'Simulador Sandbox activo mientras configuras tus llaves WOMPI en .env'
+                        }
+                      >
+                        {data?.wompi?.isConfigured
+                          ? `Wompi ${data.wompi.env === 'production' ? 'Producción' : 'Sandbox'}`
+                          : 'Wompi Sandbox Local'}
+                      </span>
+                    </div>
 
                     <div className="billing-balance-banner">
-                      <span>Saldo actual disponible</span>
+                      <span>Saldo actual disponible en tu billetera</span>
                       <strong>{formatCop(kpis.balanceCop)}</strong>
                     </div>
 
@@ -1886,22 +2057,46 @@ export default function DashboardPage({ user, onLogout, robot }) {
                         </label>
 
                         <label className="saas-form-label">
-                          <span>Método de pago local</span>
+                          <span>Medio de pago en Wompi</span>
                           <select
                             className="saas-select full-width"
                             value={topupMethod}
                             onChange={(e) => setTopupMethod(e.target.value)}
                           >
-                            <option value="Nequi">Nequi (Transferencia inmediata)</option>
-                            <option value="PSE">PSE (Débito bancario nacional)</option>
+                            <option value="Nequi">Nequi (Notificación push al celular)</option>
+                            <option value="Bancolombia">Bancolombia (Botón / Transferencia QR)</option>
+                            <option value="PSE">PSE (Débito bancario nacional - Todos los bancos)</option>
                           </select>
                         </label>
                       </div>
 
+                      <div className="wompi-methods-pills" aria-label="Medios soportados por Wompi">
+                        <span
+                          className={`wompi-method-chip ${topupMethod === 'Nequi' ? 'is-selected' : ''}`}
+                          onClick={() => setTopupMethod('Nequi')}
+                        >
+                          📱 Nequi
+                        </span>
+                        <span
+                          className={`wompi-method-chip ${
+                            topupMethod === 'Bancolombia' ? 'is-selected' : ''
+                          }`}
+                          onClick={() => setTopupMethod('Bancolombia')}
+                        >
+                          🏦 Botón Bancolombia
+                        </span>
+                        <span
+                          className={`wompi-method-chip ${topupMethod === 'PSE' ? 'is-selected' : ''}`}
+                          onClick={() => setTopupMethod('PSE')}
+                        >
+                          🇨🇴 PSE Débito Bancario
+                        </span>
+                      </div>
+
                       <button type="submit" className="btn-primary-green" disabled={processingTopup}>
                         {processingTopup
-                          ? 'Procesando recarga...'
-                          : `Agregar ${formatCop(topupAmount)} con ${topupMethod}`}
+                          ? 'Conectando con pasarela Wompi...'
+                          : `Pagar ${formatCop(topupAmount)} con Wompi (${topupMethod})`}
                       </button>
                     </form>
                   </section>
@@ -1910,7 +2105,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
                   <section className="saas-panel-card">
                     <h3 className="panel-title">Resumen contable de tu cuenta</h3>
                     <p className="panel-subtitle">
-                      Transparencia total entre tus recargas abonadas y los descuentos por token procesado.
+                      Transparencia total entre tus recargas abonadas por Wompi y los descuentos por token procesado.
                     </p>
 
                     <div className="billing-summary-list">
@@ -1930,6 +2125,10 @@ export default function DashboardPage({ user, onLogout, robot }) {
                         <span>Presupuesto mensual configurado</span>
                         <strong>{formatCop(data?.wallet?.monthlyBudgetCop || 50000)}</strong>
                       </div>
+                      <div className="billing-summary-row">
+                        <span>Seguridad de pasarela</span>
+                        <strong className="mono-td">Firma SHA-256 + Webhook Wompi</strong>
+                      </div>
                     </div>
                   </section>
                 </div>
@@ -1940,7 +2139,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
                     <div>
                       <h3 className="panel-title">Historial de transacciones y recargas</h3>
                       <p className="panel-subtitle">
-                        Cada movimiento de recarga o consumo de API queda registrado con fecha y referencia.
+                        Cada orden de pago en Wompi o consumo de API queda registrado con fecha, estado y referencia única.
                       </p>
                     </div>
 
@@ -1989,35 +2188,68 @@ export default function DashboardPage({ user, onLogout, robot }) {
                             </td>
                           </tr>
                         ) : (
-                          filteredTransactions.map((tx) => (
-                            <tr key={tx.id}>
-                              <td className="mono-td">{tx.reference}</td>
-                              <td className="mono-td nowrap-td">{formatDateTime(tx.created_at)}</td>
-                              <td>
-                                <strong>{tx.method}</strong>
-                              </td>
-                              <td>{tx.description}</td>
-                              <td
-                                className={`num-cell mono-td ${
-                                  tx.amount_cop >= 0 ? 'positive-amount' : 'negative-amount'
-                                }`}
-                              >
-                                {tx.amount_cop >= 0
-                                  ? `+${formatCop(tx.amount_cop)}`
-                                  : `-${formatCop(Math.abs(tx.amount_cop))}`}
-                              </td>
-                              <td>
-                                <div className="status-badges-cell">
-                                  <span className="status-badge status-ok">
-                                    {tx.status === 'completed' ? 'Completada' : tx.status}
-                                  </span>
-                                  {Boolean(tx.is_demo) && (
-                                    <span className="status-badge status-demo">Demo</span>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))
+                          filteredTransactions.map((tx) => {
+                            const isPending = tx.status === 'pending';
+                            const isDeclined = tx.status === 'declined';
+                            return (
+                              <tr key={tx.id}>
+                                <td className="mono-td">{tx.reference}</td>
+                                <td className="mono-td nowrap-td">{formatDateTime(tx.created_at)}</td>
+                                <td>
+                                  <strong>{tx.method}</strong>
+                                </td>
+                                <td>{tx.description}</td>
+                                <td
+                                  className={`num-cell mono-td ${
+                                    isDeclined
+                                      ? 'declined-amount'
+                                      : tx.amount_cop >= 0
+                                      ? 'positive-amount'
+                                      : 'negative-amount'
+                                  }`}
+                                >
+                                  {tx.amount_cop >= 0
+                                    ? `+${formatCop(tx.amount_cop)}`
+                                    : `-${formatCop(Math.abs(tx.amount_cop))}`}
+                                </td>
+                                <td>
+                                  <div className="status-badges-cell">
+                                    <span
+                                      className={`status-badge ${
+                                        tx.status === 'completed'
+                                          ? 'status-ok'
+                                          : isPending
+                                          ? 'status-pending'
+                                          : isDeclined
+                                          ? 'status-revoked'
+                                          : 'status-ok'
+                                      }`}
+                                    >
+                                      {tx.status === 'completed'
+                                        ? 'Aprobada'
+                                        : isPending
+                                        ? 'Pendiente Wompi'
+                                        : isDeclined
+                                        ? 'Declinada'
+                                        : tx.status}
+                                    </span>
+                                    {isPending && (
+                                      <button
+                                        type="button"
+                                        className="resume-tx-btn"
+                                        onClick={() => handleResumePendingTx(tx)}
+                                      >
+                                        Completar
+                                      </button>
+                                    )}
+                                    {Boolean(tx.is_demo) && (
+                                      <span className="status-badge status-demo">Demo</span>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
@@ -2220,6 +2452,148 @@ export default function DashboardPage({ user, onLogout, robot }) {
                 </section>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Modal Simulador de Widget Checkout de Wompi (cuando aún no hay llaves en .env) */}
+        {wompiSimSession && (
+          <div
+            className="saas-modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wompi-sim-title"
+          >
+            <div className="saas-modal-card wompi-checkout-modal">
+              <div className="saas-modal-header">
+                <div>
+                  <span className="saas-modal-kicker">
+                    PASARELA WOMPI COLOMBIA · SANDBOX INTERACTIVO
+                  </span>
+                  <h3 id="wompi-sim-title" className="saas-modal-title">
+                    Pagar {formatCop(wompiSimSession.amountCop)} con {wompiSimSession.method}
+                  </h3>
+                  <p className="saas-modal-desc">
+                    Referencia: <code>{wompiSimSession.reference}</code> · Monto en centavos:{' '}
+                    <code>{wompiSimSession.amountInCents}</code> COP
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="saas-modal-close-btn"
+                  onClick={() => setWompiSimSession(null)}
+                  aria-label="Cerrar pasarela"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="wompi-sim-body">
+                {wompiSimSession.method === 'Nequi' && (
+                  <div className="wompi-sim-fields">
+                    <label className="saas-form-label">
+                      <span>Número de celular Nequi (Colombia)</span>
+                      <input
+                        type="tel"
+                        className="saas-input"
+                        value={simPhone}
+                        onChange={(e) => setSimPhone(e.target.value)}
+                        placeholder="Ej. 3991111111"
+                      />
+                    </label>
+                    <p className="wompi-sim-hint">
+                      En el Sandbox oficial de Wompi, el número <code>3991111111</code> simula una
+                      notificación push aprobada y <code>3992222222</code> simula rechazo.
+                    </p>
+                  </div>
+                )}
+
+                {wompiSimSession.method === 'Bancolombia' && (
+                  <div className="wompi-sim-fields">
+                    <div className="wompi-bank-card">
+                      <strong>Botón de Pago / Transferencia QR Bancolombia</strong>
+                      <p>
+                        Autoriza el débito inmediato desde tu cuenta de ahorros o corriente
+                        Bancolombia a favor de <strong>IA CHOOSE Billetera COP</strong>.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {wompiSimSession.method === 'PSE' && (
+                  <div className="wompi-sim-fields">
+                    <label className="saas-form-label">
+                      <span>Selecciona tu entidad bancaria (PSE)</span>
+                      <select
+                        className="saas-select full-width"
+                        value={simPseBank}
+                        onChange={(e) => setSimPseBank(e.target.value)}
+                      >
+                        <option value="Bancolombia">Bancolombia</option>
+                        <option value="Davivienda">Banco Davivienda</option>
+                        <option value="BBVA Colombia">BBVA Colombia</option>
+                        <option value="Banco de Bogotá">Banco de Bogotá</option>
+                        <option value="Nequi PSE">Nequi (vía PSE)</option>
+                        <option value="Daviplata">Daviplata</option>
+                        <option value="Scotiabank Colpatria">Scotiabank Colpatria</option>
+                        <option value="Nu Colombia">Nu Colombia</option>
+                        <option value="Lulo Bank">Lulo Bank</option>
+                      </select>
+                    </label>
+
+                    <div className="topup-fields-grid">
+                      <label className="saas-form-label">
+                        <span>Tipo de documento</span>
+                        <select
+                          className="saas-select full-width"
+                          value={simDocType}
+                          onChange={(e) => setSimDocType(e.target.value)}
+                        >
+                          <option value="CC">Cédula de Ciudadanía (CC)</option>
+                          <option value="CE">Cédula de Extranjería (CE)</option>
+                          <option value="NIT">NIT Empresarial</option>
+                        </select>
+                      </label>
+
+                      <label className="saas-form-label">
+                        <span>Número de documento</span>
+                        <input
+                          type="text"
+                          className="saas-input"
+                          value={simDocNumber}
+                          onChange={(e) => setSimDocNumber(e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                <div className="wompi-integrity-box">
+                  <span>Firma de Integridad SHA-256 verificada por el servidor:</span>
+                  <code>{wompiSimSession.signature?.integrity || 'verificación-activa-sqlite'}</code>
+                </div>
+              </div>
+
+              <div className="wompi-sim-actions">
+                <button
+                  type="button"
+                  className="btn-primary-green"
+                  disabled={processingTopup}
+                  onClick={() => handleCompleteSimulatedWompi('APPROVED')}
+                >
+                  {processingTopup
+                    ? 'Acreditando saldo...'
+                    : `✓ Simular Pago Aprobado (+${formatCop(wompiSimSession.amountCop)})`}
+                </button>
+                <button
+                  type="button"
+                  className="revoke-key-btn wompi-decline-btn"
+                  disabled={processingTopup}
+                  onClick={() => handleCompleteSimulatedWompi('DECLINED')}
+                >
+                  ✕ Simular Pago Declinado
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

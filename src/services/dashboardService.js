@@ -17,6 +17,12 @@ export const dashboardApi = {
   topUp: (amountCop, method) =>
     apiRequest('/dashboard/topup', withToken({ method: 'POST', body: { amountCop, method } })),
 
+  createWompiCheckout: (amountCop, method) =>
+    apiRequest('/payments/wompi/checkout', withToken({ method: 'POST', body: { amountCop, method } })),
+
+  verifyWompiPayment: (payload) =>
+    apiRequest('/payments/wompi/verify', withToken({ method: 'POST', body: payload })),
+
   createApiKey: (name) =>
     apiRequest('/dashboard/api-keys', withToken({ method: 'POST', body: { name } })),
 

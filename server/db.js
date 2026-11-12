@@ -68,6 +68,23 @@ db.exec(`
   );
 `);
 
+// Asegurar columnas de trazabilidad para Wompi en billing_transactions
+const txColumns = db
+  .prepare("PRAGMA table_info('billing_transactions')")
+  .all()
+  .map((c) => c.name);
+
+if (!txColumns.includes('wompi_transaction_id')) {
+  db.exec('ALTER TABLE billing_transactions ADD COLUMN wompi_transaction_id TEXT');
+}
+if (!txColumns.includes('payment_method_type')) {
+  db.exec('ALTER TABLE billing_transactions ADD COLUMN payment_method_type TEXT');
+}
+if (!txColumns.includes('updated_at')) {
+  db.exec('ALTER TABLE billing_transactions ADD COLUMN updated_at TEXT');
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_billing_tx_reference ON billing_transactions(reference)');
+
 // Asegurar esquema actualizado para ai_models_benchmarks (incluyendo arena_writing)
 const tableColumns = db
   .prepare("PRAGMA table_info('ai_models_benchmarks')")

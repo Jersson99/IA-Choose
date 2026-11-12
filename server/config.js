@@ -26,4 +26,19 @@ export const config = {
   bcryptRounds: 10,
   minPasswordLength: 6,
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  wompi: {
+    env: (process.env.WOMPI_ENV || 'sandbox').trim().toLowerCase(),
+    publicKey: (process.env.WOMPI_PUBLIC_KEY || '').trim(),
+    privateKey: (process.env.WOMPI_PRIVATE_KEY || '').trim(),
+    integritySecret: (process.env.WOMPI_INTEGRITY_SECRET || '').trim(),
+    eventsSecret: (process.env.WOMPI_EVENTS_SECRET || '').trim(),
+    get apiBaseUrl() {
+      return this.env === 'production'
+        ? 'https://production.wompi.co/v1'
+        : 'https://sandbox.wompi.co/v1';
+    },
+    get isConfigured() {
+      return Boolean(this.publicKey && this.integritySecret);
+    },
+  },
 };
