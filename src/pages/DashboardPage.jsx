@@ -315,14 +315,11 @@ export default function DashboardPage({ user, onLogout, robot }) {
 
   // Estados de la sección Billing (Recargas con Pasarela Wompi y transacciones)
   const [topupAmount, setTopupAmount] = useState(15000);
-  const [topupMethod, setTopupMethod] = useState('Nequi');
+  const [customAmountMode, setCustomAmountMode] = useState(false);
+  const topupInputRef = useRef(null);
+  const [topupMethod, setTopupMethod] = useState('Wompi');
   const [txTypeFilter, setTxTypeFilter] = useState('all'); // 'all' | 'topup' | 'usage_debit'
   const [processingTopup, setProcessingTopup] = useState(false);
-  const [wompiSimSession, setWompiSimSession] = useState(null);
-  const [simPhone, setSimPhone] = useState('3991111111');
-  const [simPseBank, setSimPseBank] = useState('Bancolombia');
-  const [simDocType, setSimDocType] = useState('CC');
-  const [simDocNumber, setSimDocNumber] = useState('1020304050');
 
   // Estados de la sección API Keys y Gateway Moonshot Kimi
   const [newKeyName, setNewKeyName] = useState('');
@@ -2057,17 +2054,9 @@ export default function DashboardPage({ user, onLogout, robot }) {
                       <div>
                         <h2 className="panel-title">Recargar billetera con Wompi Colombia</h2>
                         <p className="panel-subtitle">
-                          Sin suscripciones ni cobros automáticos. Recarga al instante en pesos mediante Nequi, Bancolombia o PSE.
+                          Sin suscripciones ni cobros automáticos. Elige el monto a recargar y completa tu pago en la pasarela oficial de Wompi.
                         </p>
                       </div>
-                      <span
-                        className="availability-pill is-online"
-                        title="API Directa de Wompi Colombia conectada"
-                      >
-                        {data?.wompi?.isConfigured
-                          ? `Wompi API Directa · ${data.wompi.env === 'production' ? 'Producción' : 'Sandbox'}`
-                          : 'Wompi API Directa Activa'}
-                      </span>
                     </div>
 
                     <div className="billing-balance-banner">
@@ -2081,70 +2070,60 @@ export default function DashboardPage({ user, onLogout, robot }) {
                           <button
                             key={amt}
                             type="button"
-                            className={`preset-amt-btn ${Number(topupAmount) === amt ? 'active' : ''}`}
-                            onClick={() => setTopupAmount(amt)}
+                            className={`preset-amt-btn ${
+                              !customAmountMode && Number(topupAmount) === amt ? 'active' : ''
+                            }`}
+                            onClick={() => {
+                              setCustomAmountMode(false);
+                              setTopupAmount(amt);
+                            }}
                           >
                             {formatCop(amt)}
                           </button>
                         ))}
-                      </div>
-
-                      <div className="topup-fields-grid">
-                        <label className="saas-form-label">
-                          <span>Monto a recargar (COP)</span>
-                          <input
-                            type="number"
-                            min={2000}
-                            max={2000000}
-                            step={1000}
-                            className="saas-input"
-                            value={topupAmount}
-                            onChange={(e) => setTopupAmount(e.target.value)}
-                            required
-                          />
-                        </label>
-
-                        <label className="saas-form-label">
-                          <span>Medio de pago en Wompi</span>
-                          <select
-                            className="saas-select full-width"
-                            value={topupMethod}
-                            onChange={(e) => setTopupMethod(e.target.value)}
-                          >
-                            <option value="Nequi">Nequi (Notificación push al celular)</option>
-                            <option value="Bancolombia">Bancolombia (Botón / Transferencia QR)</option>
-                            <option value="PSE">PSE (Débito bancario nacional - Todos los bancos)</option>
-                          </select>
-                        </label>
-                      </div>
-
-                      <div className="wompi-methods-pills" aria-label="Medios soportados por Wompi">
-                        <span
-                          className={`wompi-method-chip ${topupMethod === 'Nequi' ? 'is-selected' : ''}`}
-                          onClick={() => setTopupMethod('Nequi')}
-                        >
-                          📱 Nequi
-                        </span>
-                        <span
-                          className={`wompi-method-chip ${
-                            topupMethod === 'Bancolombia' ? 'is-selected' : ''
+                        <button
+                          type="button"
+                          className={`preset-amt-btn ${
+                            customAmountMode || ![5000, 15000, 30000, 50000].includes(Number(topupAmount))
+                              ? 'active'
+                              : ''
                           }`}
-                          onClick={() => setTopupMethod('Bancolombia')}
+                          onClick={() => {
+                            setCustomAmountMode(true);
+                            setTimeout(() => {
+                              topupInputRef.current?.focus();
+                              topupInputRef.current?.select();
+                            }, 20);
+                          }}
                         >
-                          🏦 Botón Bancolombia
-                        </span>
-                        <span
-                          className={`wompi-method-chip ${topupMethod === 'PSE' ? 'is-selected' : ''}`}
-                          onClick={() => setTopupMethod('PSE')}
-                        >
-                          🇨🇴 PSE Débito Bancario
-                        </span>
+                          Otro valor
+                        </button>
                       </div>
+
+                      <label className="saas-form-label">
+                        <span>Monto a recargar (COP)</span>
+                        <input
+                          ref={topupInputRef}
+                          type="number"
+                          min={2000}
+                          max={2000000}
+                          step={1000}
+                          className="saas-input"
+                          placeholder="Escribe el monto en COP (mín. $2.000)"
+                          value={topupAmount}
+                          onChange={(e) => {
+                            setTopupAmount(e.target.value);
+                            const num = Number(e.target.value);
+                            setCustomAmountMode(![5000, 15000, 30000, 50000].includes(num));
+                          }}
+                          required
+                        />
+                      </label>
 
                       <button type="submit" className="btn-primary-green" disabled={processingTopup}>
                         {processingTopup
                           ? 'Abriendo pasarela oficial de Wompi...'
-                          : `Pagar en Wompi · ${formatCop(topupAmount)}`}
+                          : `Pagar en Wompi · ${formatCop(Number(topupAmount) || 0)}`}
                       </button>
                     </form>
                   </section>
