@@ -716,54 +716,17 @@ export default function DashboardPage({ user, onLogout, robot }) {
     e.preventDefault();
     setProcessingTopup(true);
     try {
-      const res = await dashboardApi.createWompiDirectCharge({
-        amountCop: Number(topupAmount),
-        method: topupMethod,
-        phoneNumber: simPhone,
-        pseBankCode: simPseBank,
-        docType: simDocType,
-        docNumber: simDocNumber,
-        redirectUrl: window.location.origin,
-      });
-
-      if (res?.dashboard) {
-        setData(res.dashboard);
+      const session = await dashboardApi.createWompiCheckout(
+        Number(topupAmount),
+        topupMethod,
+        window.location.origin
+      );
+      if (session?.dashboard) {
+        setData(session.dashboard);
       }
-
-      if (res?.outcome?.status === 'completed') {
-        showToast(
-          '¡Pago aprobado por Wompi API!',
-          `Se abonaron ${formatCop(res.outcome.amountCop)} (${topupMethod}) directamente a tu saldo disponible.`
-        );
-        robot.say(
-          'celebrate',
-          `¡Recarga aprobada! +${formatCop(res.outcome.amountCop)} disponibles en tu billetera`,
-          3600
-        );
-      } else if (res?.outcome?.status === 'declined') {
-        showToast(
-          'Transacción declinada en Wompi',
-          `El cobro por ${topupMethod} fue rechazado por la entidad financiera.`
-        );
-        robot.say('peek', 'El pago fue declinado. Tu saldo no sufrió cargos.', 3200);
-      } else {
-        if (res?.asyncPaymentUrl) {
-          window.open(res.asyncPaymentUrl, '_blank', 'noopener,noreferrer');
-        }
-        showToast(
-          'Transacción enviada a Wompi',
-          res?.asyncPaymentUrl
-            ? 'Se abrió la ventana de autorización bancaria. Al aprobar, pulsa "Verificar en Wompi" en la tabla.'
-            : 'Confirma la notificación push en tu celular Nequi y luego pulsa "Verificar en Wompi" en la tabla.'
-        );
-        robot.say(
-          'peek',
-          `Orden ${res?.reference || ''} creada en Wompi. Confírmala para acreditar tu saldo.`,
-          3500
-        );
-      }
+      openWompiCheckoutForSession(session);
     } catch (err) {
-      showToast('Error al procesar pago con Wompi API', err.message);
+      showToast('Error al abrir Wompi Checkout', err.message);
     } finally {
       setProcessingTopup(false);
     }
@@ -2155,67 +2118,6 @@ export default function DashboardPage({ user, onLogout, robot }) {
                         </label>
                       </div>
 
-                      {topupMethod === 'Nequi' && (
-                        <div className="topup-fields-grid">
-                          <label className="saas-form-label">
-                            <span>Número de celular Nequi (10 dígitos)</span>
-                            <input
-                              type="tel"
-                              maxLength={10}
-                              className="saas-input"
-                              placeholder="Ej: 3001234567 (Sandbox: 3991111111)"
-                              value={simPhone}
-                              onChange={(e) => setSimPhone(e.target.value)}
-                              required
-                            />
-                          </label>
-                        </div>
-                      )}
-
-                      {topupMethod === 'PSE' && (
-                        <div className="topup-fields-grid">
-                          <label className="saas-form-label">
-                            <span>Entidad financiera PSE</span>
-                            <select
-                              className="saas-select full-width"
-                              value={simPseBank}
-                              onChange={(e) => setSimPseBank(e.target.value)}
-                            >
-                              <option value="1">Banco que aprueba (Sandbox / Pruebas)</option>
-                              <option value="1007">Bancolombia</option>
-                              <option value="1051">Davivienda</option>
-                              <option value="1001">Banco de Bogotá</option>
-                              <option value="1013">BBVA Colombia</option>
-                              <option value="1507">Nequi</option>
-                              <option value="1551">DaviPlata</option>
-                            </select>
-                          </label>
-                          <label className="saas-form-label">
-                            <span>Tipo y número de documento</span>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <select
-                                className="saas-select"
-                                style={{ width: '90px' }}
-                                value={simDocType}
-                                onChange={(e) => setSimDocType(e.target.value)}
-                              >
-                                <option value="CC">CC</option>
-                                <option value="CE">CE</option>
-                                <option value="NIT">NIT</option>
-                              </select>
-                              <input
-                                type="text"
-                                className="saas-input"
-                                placeholder="Número de documento"
-                                value={simDocNumber}
-                                onChange={(e) => setSimDocNumber(e.target.value)}
-                                required
-                              />
-                            </div>
-                          </label>
-                        </div>
-                      )}
-
                       <div className="wompi-methods-pills" aria-label="Medios soportados por Wompi">
                         <span
                           className={`wompi-method-chip ${topupMethod === 'Nequi' ? 'is-selected' : ''}`}
@@ -2241,8 +2143,8 @@ export default function DashboardPage({ user, onLogout, robot }) {
 
                       <button type="submit" className="btn-primary-green" disabled={processingTopup}>
                         {processingTopup
-                          ? 'Procesando transacción con Wompi API...'
-                          : `Pagar con Wompi API (${topupMethod}) · ${formatCop(topupAmount)}`}
+                          ? 'Abriendo pasarela oficial de Wompi...'
+                          : `Pagar en Wompi · ${formatCop(topupAmount)}`}
                       </button>
                     </form>
                   </section>
@@ -2744,148 +2646,6 @@ print(res.choices[0].message.content)`}</code>
                 </section>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Modal Simulador de Widget Checkout de Wompi (cuando aún no hay llaves en .env) */}
-        {wompiSimSession && (
-          <div
-            className="saas-modal-backdrop"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="wompi-sim-title"
-          >
-            <div className="saas-modal-card wompi-checkout-modal">
-              <div className="saas-modal-header">
-                <div>
-                  <span className="saas-modal-kicker">
-                    PASARELA WOMPI COLOMBIA · SANDBOX INTERACTIVO
-                  </span>
-                  <h3 id="wompi-sim-title" className="saas-modal-title">
-                    Pagar {formatCop(wompiSimSession.amountCop)} con {wompiSimSession.method}
-                  </h3>
-                  <p className="saas-modal-desc">
-                    Referencia: <code>{wompiSimSession.reference}</code> · Monto en centavos:{' '}
-                    <code>{wompiSimSession.amountInCents}</code> COP
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="saas-modal-close-btn"
-                  onClick={() => setWompiSimSession(null)}
-                  aria-label="Cerrar pasarela"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="wompi-sim-body">
-                {wompiSimSession.method === 'Nequi' && (
-                  <div className="wompi-sim-fields">
-                    <label className="saas-form-label">
-                      <span>Número de celular Nequi (Colombia)</span>
-                      <input
-                        type="tel"
-                        className="saas-input"
-                        value={simPhone}
-                        onChange={(e) => setSimPhone(e.target.value)}
-                        placeholder="Ej. 3991111111"
-                      />
-                    </label>
-                    <p className="wompi-sim-hint">
-                      En el Sandbox oficial de Wompi, el número <code>3991111111</code> simula una
-                      notificación push aprobada y <code>3992222222</code> simula rechazo.
-                    </p>
-                  </div>
-                )}
-
-                {wompiSimSession.method === 'Bancolombia' && (
-                  <div className="wompi-sim-fields">
-                    <div className="wompi-bank-card">
-                      <strong>Botón de Pago / Transferencia QR Bancolombia</strong>
-                      <p>
-                        Autoriza el débito inmediato desde tu cuenta de ahorros o corriente
-                        Bancolombia a favor de <strong>IA CHOOSE Billetera COP</strong>.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {wompiSimSession.method === 'PSE' && (
-                  <div className="wompi-sim-fields">
-                    <label className="saas-form-label">
-                      <span>Selecciona tu entidad bancaria (PSE)</span>
-                      <select
-                        className="saas-select full-width"
-                        value={simPseBank}
-                        onChange={(e) => setSimPseBank(e.target.value)}
-                      >
-                        <option value="Bancolombia">Bancolombia</option>
-                        <option value="Davivienda">Banco Davivienda</option>
-                        <option value="BBVA Colombia">BBVA Colombia</option>
-                        <option value="Banco de Bogotá">Banco de Bogotá</option>
-                        <option value="Nequi PSE">Nequi (vía PSE)</option>
-                        <option value="Daviplata">Daviplata</option>
-                        <option value="Scotiabank Colpatria">Scotiabank Colpatria</option>
-                        <option value="Nu Colombia">Nu Colombia</option>
-                        <option value="Lulo Bank">Lulo Bank</option>
-                      </select>
-                    </label>
-
-                    <div className="topup-fields-grid">
-                      <label className="saas-form-label">
-                        <span>Tipo de documento</span>
-                        <select
-                          className="saas-select full-width"
-                          value={simDocType}
-                          onChange={(e) => setSimDocType(e.target.value)}
-                        >
-                          <option value="CC">Cédula de Ciudadanía (CC)</option>
-                          <option value="CE">Cédula de Extranjería (CE)</option>
-                          <option value="NIT">NIT Empresarial</option>
-                        </select>
-                      </label>
-
-                      <label className="saas-form-label">
-                        <span>Número de documento</span>
-                        <input
-                          type="text"
-                          className="saas-input"
-                          value={simDocNumber}
-                          onChange={(e) => setSimDocNumber(e.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                <div className="wompi-integrity-box">
-                  <span>Firma de Integridad SHA-256 verificada por el servidor:</span>
-                  <code>{wompiSimSession.signature?.integrity || 'verificación-activa-sqlite'}</code>
-                </div>
-              </div>
-
-              <div className="wompi-sim-actions">
-                <button
-                  type="button"
-                  className="btn-primary-green"
-                  disabled={processingTopup}
-                  onClick={() => handleCompleteSimulatedWompi('APPROVED')}
-                >
-                  {processingTopup
-                    ? 'Acreditando saldo...'
-                    : `✓ Simular Pago Aprobado (+${formatCop(wompiSimSession.amountCop)})`}
-                </button>
-                <button
-                  type="button"
-                  className="revoke-key-btn wompi-decline-btn"
-                  disabled={processingTopup}
-                  onClick={() => handleCompleteSimulatedWompi('DECLINED')}
-                >
-                  ✕ Simular Pago Declinado
-                </button>
-              </div>
-            </div>
           </div>
         )}
       </div>

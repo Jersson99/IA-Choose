@@ -332,9 +332,10 @@ export const wompiService = {
   },
 
   /**
-   * Mantiene compatibilidad con creación de sesión para Widget / URL
+   * Crea una sesión firmada con SHA-256 para abrir la Interfaz Oficial de Wompi
+   * (WidgetCheckout oficial o Web Checkout https://checkout.wompi.co/p/)
    */
-  createCheckoutSession(userId, { amountCop, method, paymentLinkUrl }) {
+  createCheckoutSession(userId, { amountCop, method, paymentLinkUrl, redirectUrl }) {
     const amount = Math.round(Number(amountCop));
     if (!Number.isFinite(amount) || amount < 2000 || amount > 2000000) {
       throw new HttpError(400, 'Ingresa un monto de recarga válido entre $2.000 y $2.000.000 COP');
@@ -350,10 +351,29 @@ export const wompiService = {
     const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
     const reference = `WMP-${userId}-${Date.now()}-${randomSuffix}`;
     const now = new Date().toISOString();
+    const publicKey = config.wompi.publicKey || 'pub_prod_FQBuduAuyEXu7MPKxt1tce9trPlh7pwJ';
     const secretForHash = config.wompi.integritySecret || 'local_sandbox_integrity_secret';
     const rawSignature = `${reference}${amountInCents}${currency}${secretForHash}`;
     const integritySignature = crypto.createHash('sha256').update(rawSignature).digest('hex');
-    const checkoutUrl = String(
+
+    const customerEmail = user.email.includes('@') ? user.email : `${user.email}@iachoose.co`;
+
+    // Construcción de la URL oficial del Web Checkout de Wompi con monto y firma SHA-256
+    const webCheckoutParams = new URLSearchParams({
+      'public-key': publicKey,
+      currency,
+      'amount-in-cents': String(amountInCents),
+      reference,
+      'signature:integrity': integritySignature,
+      'customer-data:email': customerEmail,
+      'customer-data:full-name': user.name,
+    });
+    if (redirectUrl) {
+      webCheckoutParams.set('redirect-url', redirectUrl);
+    }
+    const officialWebCheckoutUrl = `https://checkout.wompi.co/p/?${webCheckoutParams.toString()}`;
+
+    const fallbackLinkUrl = String(
       paymentLinkUrl || config.wompi.paymentLinkUrl || 'https://checkout.wompi.co/l/oZjvx6'
     ).trim();
 
@@ -373,14 +393,13 @@ export const wompiService = {
       now
     );
 
-    const customerEmail = user.email.includes('@') ? user.email : `${user.email}@iachoose.co`;
-
     return {
       mode: config.wompi.isConfigured ? 'wompi_widget' : 'wompi_url',
-      checkoutUrl,
-      externalPaymentLink: checkoutUrl,
+      checkoutUrl: config.wompi.isConfigured ? officialWebCheckoutUrl : fallbackLinkUrl,
+      webCheckoutUrl: officialWebCheckoutUrl,
+      externalPaymentLink: fallbackLinkUrl,
       environment: config.wompi.env,
-      publicKey: config.wompi.publicKey || 'pub_url_checkout',
+      publicKey,
       currency,
       amountCop: amount,
       amountInCents,

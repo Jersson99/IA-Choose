@@ -30,6 +30,7 @@ router.post('/payments/wompi/checkout', requireAuth, (req, res) => {
     amountCop: req.body?.amountCop,
     method: req.body?.method,
     paymentLinkUrl: req.body?.paymentLinkUrl,
+    redirectUrl: req.body?.redirectUrl,
   });
   res.status(201).json(session);
 });

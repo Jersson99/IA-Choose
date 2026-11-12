@@ -17,10 +17,10 @@ export const dashboardApi = {
   topUp: (amountCop, method) =>
     apiRequest('/dashboard/topup', withToken({ method: 'POST', body: { amountCop, method } })),
 
-  createWompiCheckout: (amountCop, method, paymentLinkUrl = '') =>
+  createWompiCheckout: (amountCop, method, redirectUrl = '') =>
     apiRequest(
       '/payments/wompi/checkout',
-      withToken({ method: 'POST', body: { amountCop, method, paymentLinkUrl } })
+      withToken({ method: 'POST', body: { amountCop, method, redirectUrl } })
     ),
 
   createWompiDirectCharge: (payload) =>
