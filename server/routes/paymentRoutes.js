@@ -4,7 +4,27 @@ import { wompiService } from '../services/wompiService.js';
 
 const router = Router();
 
-// Crear sesión firmada para el Widget de Wompi (o simulador local)
+// Obtener lista de bancos PSE desde la API de Wompi
+router.get('/payments/wompi/pse-banks', requireAuth, async (_req, res, next) => {
+  try {
+    const result = await wompiService.listPseBanks();
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Pago con API Directa de Wompi (POST /v1/transactions para Nequi, Bancolombia y PSE)
+router.post('/payments/wompi/direct-charge', requireAuth, async (req, res, next) => {
+  try {
+    const result = await wompiService.createDirectTransaction(req.userId, req.body || {});
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Crear sesión firmada para Widget / URL de Wompi
 router.post('/payments/wompi/checkout', requireAuth, (req, res) => {
   const session = wompiService.createCheckoutSession(req.userId, {
     amountCop: req.body?.amountCop,
@@ -14,7 +34,7 @@ router.post('/payments/wompi/checkout', requireAuth, (req, res) => {
   res.status(201).json(session);
 });
 
-// Verificar transacción al cerrar el Widget o regresar por redirectUrl
+// Verificar estado de una transacción en la API de Wompi (GET /v1/transactions/:id)
 router.post('/payments/wompi/verify', requireAuth, async (req, res, next) => {
   try {
     const result = await wompiService.verifyTransaction(req.userId, {

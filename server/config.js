@@ -49,18 +49,29 @@ export const config = {
       '238513514705-ltefem5gm2qoddu174v2qi9r1t2uj3lb.apps.googleusercontent.com'
   ),
   wompi: {
-    env: (process.env.WOMPI_ENV || 'sandbox').trim().toLowerCase(),
-    publicKey: (process.env.WOMPI_PUBLIC_KEY || '').trim(),
-    privateKey: (process.env.WOMPI_PRIVATE_KEY || '').trim(),
-    integritySecret: (process.env.WOMPI_INTEGRITY_SECRET || '').trim(),
-    eventsSecret: (process.env.WOMPI_EVENTS_SECRET || '').trim(),
+    paymentLinkUrl: cleanEnvValue(
+      process.env.WOMPI_PAYMENT_LINK_URL || 'https://checkout.wompi.co/l/oZjvx6'
+    ),
+    publicKey: cleanEnvValue(process.env.WOMPI_PUBLIC_KEY),
+    privateKey: cleanEnvValue(process.env.WOMPI_PRIVATE_KEY),
+    integritySecret: cleanEnvValue(process.env.WOMPI_INTEGRITY_SECRET),
+    eventsSecret: cleanEnvValue(process.env.WOMPI_EVENTS_SECRET),
+    get env() {
+      if (this.publicKey.startsWith('pub_prod_') || this.privateKey.startsWith('prv_prod_')) {
+        return 'production';
+      }
+      if (this.publicKey.startsWith('pub_test_') || this.privateKey.startsWith('prv_test_')) {
+        return 'sandbox';
+      }
+      return cleanEnvValue(process.env.WOMPI_ENV || 'sandbox').toLowerCase();
+    },
     get apiBaseUrl() {
       return this.env === 'production'
         ? 'https://production.wompi.co/v1'
         : 'https://sandbox.wompi.co/v1';
     },
     get isConfigured() {
-      return Boolean(this.publicKey && this.integritySecret);
+      return Boolean(this.publicKey && (this.integritySecret || this.privateKey));
     },
   },
   providers: {

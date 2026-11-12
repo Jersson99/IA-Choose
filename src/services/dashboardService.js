@@ -23,6 +23,11 @@ export const dashboardApi = {
       withToken({ method: 'POST', body: { amountCop, method, paymentLinkUrl } })
     ),
 
+  createWompiDirectCharge: (payload) =>
+    apiRequest('/payments/wompi/direct-charge', withToken({ method: 'POST', body: payload })),
+
+  getWompiPseBanks: () => apiRequest('/payments/wompi/pse-banks', withToken()),
+
   verifyWompiPayment: (payload) =>
     apiRequest('/payments/wompi/verify', withToken({ method: 'POST', body: payload })),
 
