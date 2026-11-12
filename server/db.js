@@ -68,13 +68,13 @@ db.exec(`
   );
 `);
 
-// Asegurar esquema actualizado para ai_models_benchmarks
+// Asegurar esquema actualizado para ai_models_benchmarks (incluyendo arena_writing)
 const tableColumns = db
   .prepare("PRAGMA table_info('ai_models_benchmarks')")
   .all()
   .map((c) => c.name);
 
-if (tableColumns.length > 0 && !tableColumns.includes('input_cost_1k_cop')) {
+if (tableColumns.length > 0 && (!tableColumns.includes('input_cost_1k_cop') || !tableColumns.includes('arena_writing'))) {
   db.exec('DROP TABLE ai_models_benchmarks');
 }
 
@@ -88,6 +88,7 @@ db.exec(`
     swe_bench REAL NOT NULL,
     math_500 REAL NOT NULL,
     long_bench REAL NOT NULL,
+    arena_writing REAL NOT NULL,
     mmlu_pro REAL NOT NULL,
     latency_sec REAL NOT NULL,
     cost_cop INTEGER NOT NULL,
@@ -103,10 +104,10 @@ const countRow = db.prepare('SELECT COUNT(*) as total FROM ai_models_benchmarks'
 if (countRow.total === 0) {
   const insertModel = db.prepare(`
     INSERT INTO ai_models_benchmarks (
-      slug, name, provider, tier, swe_bench, math_500, long_bench, mmlu_pro,
+      slug, name, provider, tier, swe_bench, math_500, long_bench, arena_writing, mmlu_pro,
       latency_sec, cost_cop, input_cost_1k_cop, output_cost_1k_cop,
       context_window, description, availability
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const initialModels = [
@@ -118,6 +119,7 @@ if (countRow.total === 0) {
       82.4,
       83.0,
       86.5,
+      84.0,
       85.2,
       0.5,
       9,
@@ -135,13 +137,14 @@ if (countRow.total === 0) {
       84.1,
       84.6,
       85.0,
+      88.5,
       86.8,
       0.7,
       11,
       2.1,
       6.8,
       '128.000 tokens',
-      'Modelo abierto de alto rendimiento para redacción general, síntesis estructurada y asistencia en programación estándar.',
+      'Modelo abierto de alto rendimiento para redacción estructurada, síntesis creativa intermedia y asistencia en programación estándar.',
       'Operativo',
     ],
     [
@@ -152,6 +155,7 @@ if (countRow.total === 0) {
       89.5,
       96.4,
       87.0,
+      86.2,
       90.8,
       1.9,
       14,
@@ -169,6 +173,7 @@ if (countRow.total === 0) {
       88.2,
       89.0,
       95.8,
+      91.0,
       91.4,
       1.3,
       18,
@@ -186,13 +191,14 @@ if (countRow.total === 0) {
       96.5,
       92.8,
       93.0,
+      96.2,
       94.6,
       1.7,
       58,
       13.2,
       66.0,
       '200.000 tokens',
-      'Referente en ingeniería de software, depuración de sistemas complejos, arquitectura de código y redacción analítica.',
+      'Referente en ingeniería de software, depuración de sistemas complejos, arquitectura de código y redacción editorial profunda.',
       'Operativo',
     ],
     [
@@ -203,6 +209,7 @@ if (countRow.total === 0) {
       97.2,
       96.8,
       96.2,
+      97.1,
       97.5,
       2.8,
       115,

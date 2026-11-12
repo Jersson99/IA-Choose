@@ -8,8 +8,11 @@ function withToken(options = {}) {
 export const dashboardApi = {
   getSummary: () => apiRequest('/dashboard/summary', withToken()),
 
-  executeTask: (prompt) =>
-    apiRequest('/dashboard/execute-task', withToken({ method: 'POST', body: { prompt } })),
+  recommendTask: (prompt) =>
+    apiRequest('/dashboard/recommend-task', withToken({ method: 'POST', body: { prompt } })),
+
+  executeTask: (prompt, modelName = null) =>
+    apiRequest('/dashboard/execute-task', withToken({ method: 'POST', body: { prompt, modelName } })),
 
   topUp: (amountCop, method) =>
     apiRequest('/dashboard/topup', withToken({ method: 'POST', body: { amountCop, method } })),

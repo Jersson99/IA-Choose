@@ -10,8 +10,12 @@ router.get('/dashboard/summary', (req, res) => {
   res.json(dashboardService.getOverviewData(req.userId));
 });
 
+router.post('/dashboard/recommend-task', (req, res) => {
+  res.json(dashboardService.recommendTask(req.body?.prompt));
+});
+
 router.post('/dashboard/execute-task', (req, res) => {
-  res.json(dashboardService.executeTask(req.userId, req.body?.prompt));
+  res.json(dashboardService.executeTask(req.userId, req.body?.prompt, req.body?.modelName));
 });
 
 router.post('/dashboard/topup', (req, res) => {

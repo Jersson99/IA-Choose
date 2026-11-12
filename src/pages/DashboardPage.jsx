@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PixelRobot from '../components/PixelRobot.jsx';
 import {
   IconActivity,
   IconApiKeys,
+  IconAskQuestion,
   IconBilling,
   IconLogout,
   IconModels,
@@ -15,6 +16,7 @@ import { dashboardApi } from '../services/dashboardService.js';
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Resumen general', sub: 'Overview', icon: IconOverview },
+  { id: 'ask', label: 'Hacer pregunta', sub: 'Router IA', icon: IconAskQuestion },
   { id: 'usage', label: 'Consumo y estadísticas', sub: 'Usage', icon: IconUsage },
   { id: 'activity', label: 'Actividad e historial', sub: 'Activity', icon: IconActivity },
   { id: 'models', label: 'Modelos', sub: 'Models', icon: IconModels },
@@ -32,6 +34,142 @@ function formatDateTime(iso) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+  });
+}
+
+function getProviderInfo(provider = '', modelName = '') {
+  const p = (provider || '').toLowerCase();
+  const m = (modelName || '').toLowerCase();
+
+  if (p.includes('google') || m.includes('gemini') || m.includes('flash')) {
+    return {
+      name: 'Google (Gemini)',
+      shortName: 'Google',
+      url: 'https://gemini.google.com/',
+      limitsWarning:
+        'Sujeto a límites de uso diarios, cuotas por minuto y restricciones de cuenta por parte de Google.',
+    };
+  }
+  if (p.includes('meta') || m.includes('llama')) {
+    return {
+      name: 'Meta AI',
+      shortName: 'Meta',
+      url: 'https://www.meta.ai/',
+      limitsWarning:
+        'Sujeto a restricciones de disponibilidad regional y límites de generación por parte de Meta.',
+    };
+  }
+  if (p.includes('deepseek')) {
+    return {
+      name: 'DeepSeek',
+      shortName: 'DeepSeek',
+      url: 'https://chat.deepseek.com/',
+      limitsWarning:
+        'Sujeto a saturación frecuente de servidores, colas de espera y límites temporales de DeepSeek.',
+    };
+  }
+  if (p.includes('moonshot') || m.includes('kimi')) {
+    return {
+      name: 'Moonshot Kimi',
+      shortName: 'Moonshot',
+      url: 'https://kimi.moonshot.cn/',
+      limitsWarning:
+        'Sujeto a cuotas de mensajes y verificación de cuenta por parte de Moonshot AI.',
+    };
+  }
+  if (p.includes('anthropic') || m.includes('claude')) {
+    return {
+      name: 'Anthropic (Claude)',
+      shortName: 'Anthropic',
+      url: 'https://claude.ai/',
+      limitsWarning:
+        'Sujeto a límites de mensajes cada 5 horas y ventanas de espera por saturación en Claude.ai.',
+    };
+  }
+  return {
+    name: provider || 'Proveedor Oficial',
+    shortName: provider || 'Proveedor Oficial',
+    url: 'https://chatgpt.com/',
+    limitsWarning:
+      'Sujeto a límites de uso por mensaje, cuotas de cuenta y restricciones de la plataforma externa.',
+  };
+}
+
+function renderInlineFormatting(str = '') {
+  const segments = str.split(/(\*\*.*?\*\*|`.*?`)/g);
+  return segments.map((seg, sIdx) => {
+    if (seg.startsWith('**') && seg.endsWith('**')) {
+      return <strong key={sIdx}>{seg.slice(2, -2)}</strong>;
+    }
+    if (seg.startsWith('`') && seg.endsWith('`')) {
+      return (
+        <code key={sIdx} className="msg-inline-code">
+          {seg.slice(1, -1)}
+        </code>
+      );
+    }
+    return seg;
+  });
+}
+
+function renderFormattedMessage(text = '') {
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith('```') && part.endsWith('```')) {
+      const firstLineBreak = part.indexOf('\n');
+      const lang = part.slice(3, firstLineBreak).trim() || 'code';
+      const code = part.slice(firstLineBreak + 1, -3);
+      return (
+        <div key={idx} className="msg-code-block">
+          <div className="msg-code-header">
+            <span>{lang}</span>
+            <button
+              type="button"
+              className="msg-copy-code-btn"
+              onClick={() => {
+                if (navigator.clipboard?.writeText) {
+                  navigator.clipboard.writeText(code).catch(() => {});
+                }
+              }}
+              title="Copiar código"
+            >
+              Copiar
+            </button>
+          </div>
+          <pre>
+            <code>{code}</code>
+          </pre>
+        </div>
+      );
+    }
+
+    const lines = part.split('\n');
+    return (
+      <div key={idx} className="msg-text-segment">
+        {lines.map((line, lIdx) => {
+          if (!line.trim()) return <div key={lIdx} className="msg-empty-line" />;
+          if (line.startsWith('### ')) {
+            return (
+              <h4 key={lIdx} className="msg-subhead">
+                {line.replace('### ', '')}
+              </h4>
+            );
+          }
+          if (line.startsWith('- ') || line.startsWith('* ')) {
+            return (
+              <li key={lIdx} className="msg-bullet-item">
+                {renderInlineFormatting(line.slice(2))}
+              </li>
+            );
+          }
+          return (
+            <p key={lIdx} className="msg-paragraph">
+              {renderInlineFormatting(line)}
+            </p>
+          );
+        })}
+      </div>
+    );
   });
 }
 
@@ -136,10 +274,19 @@ export default function DashboardPage({ user, onLogout, robot }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [feedbackBanner, setFeedbackBanner] = useState(null);
 
-  // Estado del despachador de tareas en Overview
+  // Estado del despachador de tareas y enrutador
   const [taskInput, setTaskInput] = useState('');
   const [recommendation, setRecommendation] = useState(null);
+  const [analyzingTask, setAnalyzingTask] = useState(false);
   const [executingTask, setExecutingTask] = useState(false);
+  const [useModalOpen, setUseModalOpen] = useState(false);
+
+  // Estado del Workspace de preguntas al modelo activo
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [sendingChat, setSendingChat] = useState(false);
+  const chatMessagesEndRef = useRef(null);
 
   // Filtros del gráfico en Overview
   const [overviewRange, setOverviewRange] = useState('week'); // 'day' | 'week' | 'month' | 'custom'
@@ -217,31 +364,163 @@ export default function DashboardPage({ user, onLogout, robot }) {
     }, 4500);
   };
 
-  // Ejecutar tarea con el Enrutador entrenado y registrar el consumo en la cuenta del usuario
-  const handleTaskAnalyze = async (e) => {
-    e.preventDefault();
+  // Consultar recomendación o activar el modelo si ya está calculada
+  const handleTaskSubmit = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
     const prompt = taskInput.trim();
     if (!prompt) {
       robot.say('wave', 'Escribe primero tu tarea en el recuadro', 2400);
       return;
     }
 
-    setExecutingTask(true);
+    if (recommendation) {
+      // El modelo ya fue recomendado: cambiar la UI al workspace del modelo
+      handleUseModel(recommendation.model);
+      return;
+    }
+
+    setAnalyzingTask(true);
     try {
-      const result = await dashboardApi.executeTask(prompt);
+      const result = await dashboardApi.recommendTask(prompt);
       setRecommendation(result.recommendation);
-      setData(result.dashboard);
       robot.say(
         'celebrate',
-        `IA elegida: ${result.recommendation.model} (${result.recommendation.cost}) · Complejidad ${result.recommendation.analysis.complexityLevel}`,
+        `Mejor modelo: ${result.recommendation.model} (${result.recommendation.cost}) · Haz clic en Usar para comenzar`,
         4000
       );
     } catch (err) {
-      showToast('Aviso al procesar tarea', err.message);
+      showToast('Aviso al consultar modelo', err.message);
       robot.say('peek', err.message, 3400);
     } finally {
-      setExecutingTask(false);
+      setAnalyzingTask(false);
     }
+  };
+
+  const handleUseModel = async (chosenModelName) => {
+    const targetModel = chosenModelName || recommendation?.model;
+    if (!targetModel) return;
+
+    setSelectedModel(targetModel);
+    setUseModalOpen(false);
+
+    const initialPrompt = taskInput.trim();
+    if (initialPrompt && chatMessages.length === 0) {
+      const userMsgId = 'usr-' + Date.now();
+      const userMsg = {
+        id: userMsgId,
+        sender: 'user',
+        text: initialPrompt,
+        timestamp: new Date().toISOString(),
+      };
+      setChatMessages([userMsg]);
+      setSendingChat(true);
+      robot.say('peek', `Consultando a ${targetModel}...`, 2500);
+
+      try {
+        const result = await dashboardApi.executeTask(initialPrompt, targetModel);
+        setData(result.dashboard);
+        const modelMsg = {
+          id: 'model-' + Date.now(),
+          sender: 'model',
+          text: result.reply,
+          modelName: result.model,
+          provider: result.provider,
+          cost: result.cost,
+          latencyMs: result.latencyMs,
+          tokens: result.tokens,
+          timestamp: new Date().toISOString(),
+        };
+        setChatMessages((prev) => [...prev, modelMsg]);
+        robot.say('celebrate', `Respuesta generada con ${result.model}`, 3200);
+      } catch (err) {
+        showToast('Error al procesar consulta', err.message);
+        robot.say('peek', err.message, 3400);
+      } finally {
+        setSendingChat(false);
+      }
+    } else {
+      robot.say(
+        'celebrate',
+        `Modelo activo: ${targetModel}. Escribe tus preguntas directamente.`,
+        3500
+      );
+    }
+  };
+
+  const handleSendChatMessage = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    const prompt = chatInput.trim();
+    if (!prompt || sendingChat) return;
+
+    const userMsgId = 'usr-' + Date.now();
+    const userMsg = {
+      id: userMsgId,
+      sender: 'user',
+      text: prompt,
+      timestamp: new Date().toISOString(),
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatInput('');
+    setSendingChat(true);
+    robot.say('peek', `Consultando a ${selectedModel}...`, 2500);
+
+    try {
+      const result = await dashboardApi.executeTask(prompt, selectedModel);
+      setData(result.dashboard);
+      const modelMsg = {
+        id: 'model-' + Date.now(),
+        sender: 'model',
+        text: result.reply,
+        modelName: result.model,
+        provider: result.provider,
+        cost: result.cost,
+        latencyMs: result.latencyMs,
+        tokens: result.tokens,
+        timestamp: new Date().toISOString(),
+      };
+      setChatMessages((prev) => [...prev, modelMsg]);
+      robot.say(
+        'celebrate',
+        `Respuesta lista (${result.cost}) · ${result.latencyMs} ms`,
+        3000
+      );
+    } catch (err) {
+      showToast('Aviso al procesar pregunta', err.message);
+      robot.say('peek', err.message, 3400);
+    } finally {
+      setSendingChat(false);
+    }
+  };
+
+  const handleSwitchModel = (newModelName) => {
+    setSelectedModel(newModelName);
+    const mObj = models.find((m) => m.name === newModelName);
+    showToast(
+      'Modelo cambiado',
+      `Ahora tus preguntas se procesarán con ${newModelName} ($${mObj?.cost_cop || 9} COP / consulta).`
+    );
+    robot.say('happy', `Cambiado a ${newModelName}`, 2500);
+  };
+
+  const handleReturnToRouter = () => {
+    setSelectedModel(null);
+    setRecommendation(null);
+    setTaskInput('');
+    robot.say('wave', 'Enrutador listo para analizar una nueva tarea', 2400);
+  };
+
+  const handleUseExternal = (providerInfo) => {
+    const prompt = (chatInput || taskInput || '').trim();
+    if (navigator.clipboard?.writeText && prompt) {
+      navigator.clipboard.writeText(prompt).catch(() => {});
+    }
+    window.open(providerInfo.url, '_blank', 'noopener,noreferrer');
+    showToast(
+      `Abriendo ${providerInfo.name}`,
+      `Se copió tu consulta al portapapeles. Ten en cuenta los límites de uso por parte de ${providerInfo.shortName}.`
+    );
+    setUseModalOpen(false);
   };
 
   const handleToggleDemoData = async (action) => {
@@ -331,6 +610,23 @@ export default function DashboardPage({ user, onLogout, robot }) {
 
   const logs = data?.logs || [];
   const models = data?.models || [];
+  const currentModelObj = useMemo(() => {
+    if (!selectedModel) return null;
+    return (
+      models.find((m) => m.name === selectedModel || m.slug === selectedModel) ||
+      models[0] || {
+        name: selectedModel,
+        provider: 'Google DeepMind',
+        cost_cop: 9,
+      }
+    );
+  }, [models, selectedModel]);
+
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, sendingChat]);
   const transactions = data?.transactions || [];
   const apiKeys = data?.apiKeys || [];
   const kpis = data?.kpis || {
@@ -503,22 +799,6 @@ export default function DashboardPage({ user, onLogout, robot }) {
             <span className="sidebar-currency-badge">COP</span>
           </div>
           <p className="sidebar-brand-caption">Consola de Enrutamiento y Saldo</p>
-        </div>
-
-        {/* Tarjeta rápida de Saldo en el menú lateral */}
-        <div className="sidebar-wallet-summary">
-          <span className="wallet-mini-label">SALDO DISPONIBLE</span>
-          <strong className="wallet-mini-amount">{formatCop(kpis.balanceCop)}</strong>
-          <button
-            type="button"
-            className="wallet-mini-topup-btn"
-            onClick={() => {
-              setActiveTab('billing');
-              setMobileNavOpen(false);
-            }}
-          >
-            + Recargar con Nequi / PSE
-          </button>
         </div>
 
         <nav className="sidebar-nav-list">
@@ -748,16 +1028,25 @@ export default function DashboardPage({ user, onLogout, robot }) {
                     <div>
                       <h2>Tu cuenta aún no registra consumo de modelos</h2>
                       <p>
-                        Envía tu primera consulta en el enrutador de abajo para registrar actividad real, o carga datos de demostración claramente etiquetados para explorar los gráficos e informes.
+                        Dirígete a la sección <strong>Hacer pregunta</strong> en el menú lateral para escribir tu primera tarea y conocer el modelo ideal, o carga datos de demostración claramente etiquetados para explorar los gráficos.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      className="btn-primary-green compact-btn"
-                      onClick={() => handleToggleDemoData('load')}
-                    >
-                      Cargar datos de prueba (Demo)
-                    </button>
+                    <div className="empty-banner-actions">
+                      <button
+                        type="button"
+                        className="btn-primary-green compact-btn"
+                        onClick={() => setActiveTab('ask')}
+                      >
+                        Ir a Hacer pregunta
+                      </button>
+                      <button
+                        type="button"
+                        className="demo-status-pill"
+                        onClick={() => handleToggleDemoData('load')}
+                      >
+                        Cargar datos de prueba (Demo)
+                      </button>
+                    </div>
                   </section>
                 )}
 
@@ -845,9 +1134,20 @@ export default function DashboardPage({ user, onLogout, robot }) {
 
                   <SpendChart series={overviewChartSeries} metric={overviewMetric} />
                 </section>
+              </div>
+            )}
 
-                {/* Enrutador Interactivo en vivo + Robot Pixel-Art (Preservado e integrado con SQLite) */}
-                <section className="overview-router-grid" aria-label="Enrutador inteligente de tareas y asistente">
+            {/* =================================================================
+             * SECCIÓN: HACER PREGUNTA
+             * MODO 1: Enrutador inteligente (buscar mejor modelo)
+             * ================================================================= */}
+            {activeTab === 'ask' && !selectedModel && (
+              <div className="dashboard-section-stack ask-section-centered">
+                {/* Espacio principal para escribir la tarea + Asistente PixelRobot */}
+                <section
+                  className="overview-router-grid ask-router-centered"
+                  aria-label="Enrutador inteligente de tareas y asistente"
+                >
                   <div className="overview-robot-card">
                     <PixelRobot
                       robotMood={robot.mood}
@@ -856,7 +1156,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
                     />
                   </div>
 
-                  <form className="dark-task-box overview-task-box" onSubmit={handleTaskAnalyze}>
+                  <form className="dark-task-box overview-task-box" onSubmit={handleTaskSubmit}>
                     <div className="task-box-header">
                       <label htmlFor="dashboard-task-textarea" className="task-prompt-label">
                         <span>Dime tu tarea y te diré el mejor modelo para tí</span>
@@ -883,11 +1183,11 @@ export default function DashboardPage({ user, onLogout, robot }) {
                       }}
                       onFocus={() => robot.onFieldFocus('task')}
                       onBlur={() => robot.onFieldFocus(null)}
-                      placeholder="Escribe una tarea para enrutarla según Benchmarks (ej.: 'Haz un hola mundo en Python' vs. 'Refactorizar microservicio en Python con concurrencia'). Se registrará en tu historial real..."
+                      placeholder="Escribe aquí tu tarea o pregunta (ej.: 'Haz un hola mundo en Python' vs. 'Diseñar la arquitectura de un microservicio distribuido con Kafka')..."
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
-                          handleTaskAnalyze(e);
+                          handleTaskSubmit(e);
                         }
                       }}
                     />
@@ -906,18 +1206,192 @@ export default function DashboardPage({ user, onLogout, robot }) {
                         </div>
                       ) : (
                         <span className="task-hint-text">
-                          Cada consulta evalúa complejidad, elige la IA más rentable y actualiza tus estadísticas
+                          Presiona Enter o el botón para analizar tu tarea y conocer el modelo ideal
                         </span>
                       )}
 
-                      <button type="submit" className="task-analyze-btn" disabled={executingTask}>
-                        {executingTask ? 'Enrutando...' : 'Recomendar y ejecutar'}
+                      <button
+                        type="submit"
+                        className={`task-analyze-btn ${recommendation ? 'is-ready-to-use' : ''}`}
+                        disabled={analyzingTask}
+                      >
+                        {analyzingTask
+                          ? 'Consultando...'
+                          : recommendation
+                          ? `Usar ${recommendation.model}`
+                          : 'Consultar mejor modelo'}
                       </button>
                     </div>
                   </form>
                 </section>
               </div>
             )}
+
+            {/* =================================================================
+             * SECCIÓN: HACER PREGUNTA
+             * MODO 2: Workspace de preguntas directas al modelo activo o alternativo
+             * ================================================================= */}
+            {activeTab === 'ask' && selectedModel && (() => {
+              return (
+                <div className="dashboard-section-stack model-workspace-shell">
+                  {/* Encabezado del Workspace con botón para volver al enrutador */}
+                  <header className="model-workspace-header">
+                    <div className="model-workspace-left">
+                      <button
+                        type="button"
+                        className="model-workspace-back-btn"
+                        onClick={handleReturnToRouter}
+                        title="Volver al enrutador para buscar el mejor modelo para otra tarea"
+                      >
+                        ← Volver al Enrutador
+                      </button>
+                    </div>
+                  </header>
+
+                  {/* Tarjeta del Chat / Conversación con el modelo */}
+                  <div className="model-chat-stream-card">
+                    <div className="model-chat-messages-container">
+                      {chatMessages.length === 0 ? (
+                        <div className="chat-empty-state">
+                          <div className="chat-empty-robot-preview">
+                            <PixelRobot
+                              robotMood={robot.mood}
+                              onRobotClick={robot.handleClick}
+                              speechText={robot.speech || `Listo para consultar a ${selectedModel}`}
+                            />
+                          </div>
+                          <div className="chat-empty-text">
+                            <h3>Workspace de Preguntas · {selectedModel}</h3>
+                            <p>
+                              Escribe tu pregunta o requerimiento abajo para procesarlo directamente con{' '}
+                              <strong>{selectedModel}</strong> sin límites de cuota. También puedes cambiar a cualquier otro modelo en el selector superior.
+                            </p>
+                            <div className="chat-empty-specs">
+                              <span>
+                                Proveedor: <strong>{currentModelObj?.provider}</strong>
+                              </span>
+                              <span>
+                                Tarifa: <strong>${currentModelObj?.cost_cop} COP</strong> / consulta
+                              </span>
+                              <span>
+                                SWE-bench: <strong>{currentModelObj?.swe_bench}%</strong>
+                              </span>
+                              <span>
+                                MATH-500: <strong>{currentModelObj?.math_500}%</strong>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="chat-messages-list">
+                          {chatMessages.map((msg) => (
+                            <div key={msg.id} className={`chat-message-row is-${msg.sender}`}>
+                              <div className="chat-msg-avatar">
+                                {msg.sender === 'user' ? (
+                                  (data?.user?.name || user?.name || 'U').charAt(0).toUpperCase()
+                                ) : (
+                                  <span className="robot-msg-icon">🤖</span>
+                                )}
+                              </div>
+
+                              <div className="chat-msg-bubble">
+                                <div className="chat-msg-top">
+                                  <strong className="chat-msg-author">
+                                    {msg.sender === 'user' ? 'Tú' : msg.modelName || selectedModel}
+                                  </strong>
+                                  {msg.sender === 'model' && (
+                                    <div className="chat-msg-tags">
+                                      {msg.latencyMs && <span>{msg.latencyMs} ms</span>}
+                                      {msg.tokens?.totalTokens && (
+                                        <span>{msg.tokens.totalTokens} tokens</span>
+                                      )}
+                                      {msg.cost && <span className="cost-tag">{msg.cost}</span>}
+                                    </div>
+                                  )}
+                                  <span className="chat-msg-time">{formatDateTime(msg.timestamp)}</span>
+                                </div>
+
+                                <div className="chat-msg-body">
+                                  {msg.sender === 'user' ? (
+                                    <p>{msg.text}</p>
+                                  ) : (
+                                    renderFormattedMessage(msg.text)
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+
+                          {sendingChat && (
+                            <div className="chat-message-row is-model is-loading">
+                              <div className="chat-msg-avatar">
+                                <span className="robot-msg-icon">🤖</span>
+                              </div>
+                              <div className="chat-msg-bubble">
+                                <div className="chat-loading-dots">
+                                  <span>Procesando con {selectedModel}</span>
+                                  <span className="dot dot-1">.</span>
+                                  <span className="dot dot-2">.</span>
+                                  <span className="dot dot-3">.</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div ref={chatMessagesEndRef} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Barra de envío de preguntas */}
+                    <form className="model-chat-input-bar" onSubmit={handleSendChatMessage}>
+                      <textarea
+                        className="model-chat-textarea"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onFocus={() => robot.onFieldFocus('chat')}
+                        onBlur={() => robot.onFieldFocus(null)}
+                        placeholder={`Haz una pregunta o continúa la conversación con ${selectedModel}... (Shift+Enter para salto de línea)`}
+                        rows={2}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendChatMessage(e);
+                          }
+                        }}
+                      />
+
+                      <div className="model-chat-input-actions">
+                        <div className="model-selector-group">
+                          <span className="model-selector-label">Modelo activo:</span>
+                          <select
+                            className="model-workspace-select"
+                            value={selectedModel}
+                            onChange={(e) => handleSwitchModel(e.target.value)}
+                            aria-label="Cambiar modelo activo"
+                          >
+                            {models.map((m) => (
+                              <option key={m.slug} value={m.name}>
+                                {m.name} · ${m.cost_cop} COP ({m.provider})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          type="submit"
+                          className="model-chat-send-btn"
+                          disabled={sendingChat || !chatInput.trim()}
+                        >
+                          {sendingChat
+                            ? 'Enviando...'
+                            : `Enviar (${currentModelObj?.cost_cop || 9} COP)`}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* =================================================================
              * SECCIÓN 2: CONSUMO Y ESTADÍSTICAS (USAGE)
@@ -1342,6 +1816,10 @@ export default function DashboardPage({ user, onLogout, robot }) {
                           <div className="bm-item">
                             <span>LongBench (PDFs)</span>
                             <strong>{m.long_bench}%</strong>
+                          </div>
+                          <div className="bm-item">
+                            <span>Arena-Hard (Redacción)</span>
+                            <strong>{m.arena_writing || m.mmlu_pro}%</strong>
                           </div>
                           <div className="bm-item">
                             <span>MMLU-Pro (General)</span>
