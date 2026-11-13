@@ -83,10 +83,12 @@ export const llmProviderService = {
       (isGeminiModel || !config.providers.moonshot.isConfigured || !isKimiModel)
     ) {
       const geminiCandidates = [
+        'gemini-3.5-flash-lite',
+        'gemini-flash-lite-latest',
         config.providers.google.modelId,
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-3.6-flash',
+        'gemini-3.7-flash',
       ];
       const uniqueGeminiModels = [...new Set(geminiCandidates.filter(Boolean))];
 
@@ -113,6 +115,7 @@ export const llmProviderService = {
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(12000),
             body: JSON.stringify({
               systemInstruction: {
                 parts: [
@@ -133,7 +136,7 @@ export const llmProviderService = {
           if (!response.ok) {
             const errBody = await response.json().catch(() => ({}));
             const msg = errBody?.error?.message || `HTTP ${response.status}`;
-            if (response.status === 404) {
+            if (response.status === 404 || response.status === 503 || response.status === 429) {
               lastGeminiErr = new Error(msg);
               continue;
             }

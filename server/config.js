@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT_ENV_PATH = path.resolve(__dirname, '..', '.env');
 
 // En Vercel (serverless) el sistema de archivos del código es de solo lectura; usamos /tmp
 export const DATA_DIR = process.env.VERCEL
@@ -17,6 +18,34 @@ function cleanEnvValue(val = '') {
     .trim()
     .replace(/^["']|["']$/g, '')
     .trim();
+}
+
+function readDotEnvFile() {
+  try {
+    if (!fs.existsSync(ROOT_ENV_PATH)) return {};
+    const raw = fs.readFileSync(ROOT_ENV_PATH, 'utf8');
+    const map = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const val = cleanEnvValue(trimmed.slice(eqIdx + 1));
+      map[key] = val;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function getEnv(key, fallback = '') {
+  const fromFile = readDotEnvFile()[key];
+  if (fromFile !== undefined && fromFile !== '') return fromFile;
+  const fromProc = cleanEnvValue(process.env[key]);
+  if (fromProc !== '') return fromProc;
+  return cleanEnvValue(fallback);
 }
 
 // La clave de firma de tokens se genera una vez y se guarda en DATA_DIR
@@ -49,13 +78,21 @@ export const config = {
       '238513514705-ltefem5gm2qoddu174v2qi9r1t2uj3lb.apps.googleusercontent.com'
   ),
   wompi: {
-    paymentLinkUrl: cleanEnvValue(
-      process.env.WOMPI_PAYMENT_LINK_URL || 'https://checkout.wompi.co/l/oZjvx6'
-    ),
-    publicKey: cleanEnvValue(process.env.WOMPI_PUBLIC_KEY),
-    privateKey: cleanEnvValue(process.env.WOMPI_PRIVATE_KEY),
-    integritySecret: cleanEnvValue(process.env.WOMPI_INTEGRITY_SECRET),
-    eventsSecret: cleanEnvValue(process.env.WOMPI_EVENTS_SECRET),
+    get paymentLinkUrl() {
+      return getEnv('WOMPI_PAYMENT_LINK_URL', 'https://checkout.wompi.co/l/oZjvx6');
+    },
+    get publicKey() {
+      return getEnv('WOMPI_PUBLIC_KEY');
+    },
+    get privateKey() {
+      return getEnv('WOMPI_PRIVATE_KEY');
+    },
+    get integritySecret() {
+      return getEnv('WOMPI_INTEGRITY_SECRET');
+    },
+    get eventsSecret() {
+      return getEnv('WOMPI_EVENTS_SECRET');
+    },
     get env() {
       if (this.publicKey.startsWith('pub_prod_') || this.privateKey.startsWith('prv_prod_')) {
         return 'production';
@@ -63,7 +100,7 @@ export const config = {
       if (this.publicKey.startsWith('pub_test_') || this.privateKey.startsWith('prv_test_')) {
         return 'sandbox';
       }
-      return cleanEnvValue(process.env.WOMPI_ENV || 'sandbox').toLowerCase();
+      return getEnv('WOMPI_ENV', 'sandbox').toLowerCase();
     },
     get apiBaseUrl() {
       return this.env === 'production'
@@ -76,19 +113,26 @@ export const config = {
   },
   providers: {
     google: {
-      apiKey: cleanEnvValue(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY),
-      modelId: cleanEnvValue(process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash'),
+      get apiKey() {
+        return getEnv('GEMINI_API_KEY') || getEnv('GOOGLE_AI_API_KEY');
+      },
+      get modelId() {
+        return getEnv('GEMINI_MODEL_ID', 'gemini-3.5-flash-lite');
+      },
       get isConfigured() {
         return Boolean(this.apiKey);
       },
     },
     moonshot: {
-      apiKey: cleanEnvValue(process.env.MOONSHOT_API_KEY),
-      baseUrl: cleanEnvValue(process.env.MOONSHOT_BASE_URL || 'https://api.moonshot.ai/v1').replace(
-        /\/+$/,
-        ''
-      ),
-      modelId: cleanEnvValue(process.env.MOONSHOT_MODEL_ID || 'kimi-k2-0711-preview'),
+      get apiKey() {
+        return getEnv('MOONSHOT_API_KEY');
+      },
+      get baseUrl() {
+        return getEnv('MOONSHOT_BASE_URL', 'https://api.moonshot.ai/v1').replace(/\/+$/, '');
+      },
+      get modelId() {
+        return getEnv('MOONSHOT_MODEL_ID', 'kimi-k2-0711-preview');
+      },
       get isConfigured() {
         return Boolean(this.apiKey);
       },
