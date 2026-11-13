@@ -82,10 +82,10 @@ router.get('/v1/models', requireApiKeyOrAuth, (_req, res) => {
   });
 });
 
-// Endpoint compatible con OpenAI / Moonshot AI (/api/v1/chat/completions) que descuenta saldo en COP
+// Endpoint compatible con OpenAI / Google Gemini (/api/v1/chat/completions) que descuenta saldo en COP
 router.post('/v1/chat/completions', requireApiKeyOrAuth, async (req, res, next) => {
   try {
-    const requestedModel = req.body?.model || 'kimi-k2';
+    const requestedModel = req.body?.model || 'gemini-flash';
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
 
     // Extraer el último mensaje del usuario o el campo `prompt`

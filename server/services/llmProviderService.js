@@ -61,17 +61,122 @@ export function generateFallbackResponse(prompt, model, domain) {
 
 export const llmProviderService = {
   /**
-   * Invoca la API oficial de Moonshot AI (Kimi) si MOONSHOT_API_KEY está configurada en .env.
-   * Si no está configurada o el modelo es de otro proveedor aún en piloto, usa el motor simulado.
+   * Invoca la API oficial de Google AI (Gemini) cuando GEMINI_API_KEY está configurada en .env,
+   * o Moonshot AI (Kimi) si MOONSHOT_API_KEY está configurada.
    */
   async generateCompletion({ modelRow, messages, promptText, domain, complexity = 0.35 }) {
     const startMs = Date.now();
+    const isGeminiModel =
+      modelRow.slug === 'gemini-flash' ||
+      modelRow.name.toLowerCase().includes('gemini') ||
+      modelRow.provider.toLowerCase().includes('google');
+
     const isKimiModel =
       modelRow.slug === 'kimi-k2' ||
       modelRow.name.toLowerCase().includes('kimi') ||
       modelRow.provider.toLowerCase().includes('moonshot');
 
-    // Si es Moonshot Kimi y el administrador ya configuró MOONSHOT_API_KEY en el servidor
+    // 1. Conexión en vivo con Google AI (Gemini API) cuando GEMINI_API_KEY está en .env
+    // Se usa para Gemini 2.5 Flash o como proveedor real general si es la llave activa en el servidor
+    if (
+      config.providers.google.isConfigured &&
+      (isGeminiModel || !config.providers.moonshot.isConfigured || !isKimiModel)
+    ) {
+      const geminiCandidates = [
+        config.providers.google.modelId,
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+      ];
+      const uniqueGeminiModels = [...new Set(geminiCandidates.filter(Boolean))];
+
+      const contents =
+        Array.isArray(messages) && messages.length > 0
+          ? messages
+              .filter((m) => m?.role !== 'system' && m?.content)
+              .map((m) => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: String(m.content) }],
+              }))
+          : [{ role: 'user', parts: [{ text: String(promptText) }] }];
+
+      const systemMsg =
+        Array.isArray(messages) && messages.find((m) => m?.role === 'system')?.content;
+
+      let lastGeminiErr = null;
+      for (const remoteModelId of uniqueGeminiModels) {
+        try {
+          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+            remoteModelId
+          )}:generateContent?key=${encodeURIComponent(config.providers.google.apiKey)}`;
+
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [
+                  {
+                    text:
+                      systemMsg ||
+                      `Eres ${modelRow.name}, modelo integrado en la plataforma colombiana IA CHOOSE. Responde siempre en español claro, preciso y bien estructurado.`,
+                  },
+                ],
+              },
+              contents: contents.length > 0 ? contents : [{ role: 'user', parts: [{ text: String(promptText) }] }],
+              generationConfig: {
+                temperature: 0.6,
+              },
+            }),
+          });
+
+          if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            const msg = errBody?.error?.message || `HTTP ${response.status}`;
+            if (response.status === 404) {
+              lastGeminiErr = new Error(msg);
+              continue;
+            }
+            throw new HttpError(502, `Error desde Google AI (Gemini): ${msg}`);
+          }
+
+          const data = await response.json();
+          const parts = data?.candidates?.[0]?.content?.parts || [];
+          const replyText =
+            parts.map((p) => p?.text || '').join('') ||
+            'Respuesta recibida desde Google AI (Gemini) sin contenido de texto.';
+
+          const inputTokens =
+            Number(data?.usageMetadata?.promptTokenCount) ||
+            Math.max(32, Math.round(promptText.split(/\s+/).length * 1.6));
+          const outputTokens =
+            Number(data?.usageMetadata?.candidatesTokenCount) ||
+            Math.max(48, Math.round(replyText.split(/\s+/).length * 1.4));
+          const latencyMs = Math.max(100, Date.now() - startMs);
+
+          return {
+            reply: replyText,
+            inputTokens,
+            outputTokens,
+            latencyMs,
+            liveProvider: true,
+            remoteModelId,
+          };
+        } catch (err) {
+          if (err instanceof HttpError) throw err;
+          lastGeminiErr = err;
+        }
+      }
+
+      if (lastGeminiErr) {
+        throw new HttpError(
+          502,
+          `No se pudo completar la consulta en Google AI (Gemini): ${lastGeminiErr.message}`
+        );
+      }
+    }
+
+    // 2. Si es Moonshot Kimi y el administrador configuró MOONSHOT_API_KEY en el servidor
     if (isKimiModel && config.providers.moonshot.isConfigured) {
       const normalizedMessages =
         Array.isArray(messages) && messages.length > 0

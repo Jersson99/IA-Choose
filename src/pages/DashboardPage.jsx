@@ -321,14 +321,14 @@ export default function DashboardPage({ user, onLogout, robot }) {
   const [txTypeFilter, setTxTypeFilter] = useState('all'); // 'all' | 'topup' | 'usage_debit'
   const [processingTopup, setProcessingTopup] = useState(false);
 
-  // Estados de la sección API Keys y Gateway Moonshot Kimi
+  // Estados de la sección API Keys y Gateway Google AI (Gemini) / Moonshot Kimi
   const [newKeyName, setNewKeyName] = useState('');
   const [justCreatedSecret, setJustCreatedSecret] = useState(null);
   const [creatingKey, setCreatingKey] = useState(false);
   const [gatewayTestKey, setGatewayTestKey] = useState('');
-  const [gatewayTestModel, setGatewayTestModel] = useState('kimi-k2');
+  const [gatewayTestModel, setGatewayTestModel] = useState('gemini-flash');
   const [gatewayTestPrompt, setGatewayTestPrompt] = useState(
-    'Explica brevemente cómo funciona la ventana de contexto de 256K tokens de Moonshot Kimi K2 para analizar tesis universitarias.'
+    'Explica brevemente en 3 puntos cómo optimizar consultas SQL y cómo IA CHOOSE enruta modelos con Google AI (Gemini).'
   );
   const [testingGateway, setTestingGateway] = useState(false);
   const [gatewayTestResult, setGatewayTestResult] = useState(null);
@@ -2425,7 +2425,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
                   <section className="saas-panel-card">
                     <h3 className="panel-title">Probador en Vivo del Gateway (`/api/v1/chat/completions`)</h3>
                     <p className="panel-subtitle">
-                      Simula una petición de un cliente externo hacia Moonshot Kimi y verifica cómo se descuenta en tiempo real de tu saldo disponible ({formatCop(kpis.balanceCop)}).
+                      Simula una petición de un cliente externo hacia Google AI (Gemini) y verifica cómo se descuenta en tiempo real de tu saldo disponible ({formatCop(kpis.balanceCop)}).
                     </p>
 
                     <form className="topup-form" onSubmit={handleTestGateway}>
@@ -2448,9 +2448,9 @@ export default function DashboardPage({ user, onLogout, robot }) {
                             value={gatewayTestModel}
                             onChange={(e) => setGatewayTestModel(e.target.value)}
                           >
-                            <option value="kimi-k2">kimi-k2 (Moonshot Kimi K2 · $18 COP base)</option>
+                            <option value="gemini-flash">gemini-flash (Google AI · Gemini 2.5 Flash · $9 COP base)</option>
                             <option value="auto">auto (Enrutador Inteligente IA CHOOSE)</option>
-                            <option value="gemini-flash">gemini-flash (Gemini 2.5 Flash · $9 COP)</option>
+                            <option value="kimi-k2">kimi-k2 (Moonshot Kimi K2 · $18 COP base)</option>
                             <option value="deepseek-r1">deepseek-r1 (DeepSeek R1 · $14 COP)</option>
                             <option value="claude-sonnet">claude-sonnet (Claude 3.7 Sonnet · $58 COP)</option>
                           </select>
@@ -2470,7 +2470,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
 
                       <button type="submit" className="btn-primary-green" disabled={testingGateway}>
                         {testingGateway
-                          ? 'Invocando Moonshot Kimi y debitando saldo...'
+                          ? 'Invocando Google AI (Gemini) y debitando saldo...'
                           : 'Ejecutar Petición API y Descontar Saldo en COP'}
                       </button>
                     </form>
@@ -2505,14 +2505,14 @@ export default function DashboardPage({ user, onLogout, robot }) {
                   </section>
 
                   <section className="saas-panel-card">
-                    <h3 className="panel-title">Cómo tus clientes consumen la API de Moonshot Kimi</h3>
+                    <h3 className="panel-title">Cómo tus clientes consumen la API de Google AI (Gemini)</h3>
                     <p className="panel-subtitle">
-                      El endpoint de IA CHOOSE es 100 % compatible con el SDK de OpenAI / Moonshot. Tus clientes usan su clave <code>iac_live_...</code> y nunca ven tu llave maestra.
+                      El endpoint de IA CHOOSE es 100 % compatible con el SDK de OpenAI. Tus clientes usan su clave <code>iac_live_...</code> y nunca ven tu llave maestra de Google AI.
                     </p>
 
                     <div className="msg-code-block">
                       <div className="msg-code-header">
-                        <span>Python (SDK OpenAI / Moonshot)</span>
+                        <span>Python (SDK OpenAI compatible con IA CHOOSE)</span>
                       </div>
                       <pre>
                         <code>{`from openai import OpenAI
@@ -2523,7 +2523,7 @@ client = OpenAI(
 )
 
 res = client.chat.completions.create(
-    model="kimi-k2", # o "auto" para enrutamiento inteligente
+    model="gemini-flash", # o "auto" para enrutamiento inteligente
     messages=[{"role": "user", "content": "Resume este artículo académico"}]
 )
 print(res.choices[0].message.content)`}</code>
@@ -2538,7 +2538,7 @@ print(res.choices[0].message.content)`}</code>
                         <code>{`curl -X POST ${window.location.origin}/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${justCreatedSecret || 'iac_live_tu_clave_de_cliente'}" \\
-  -d '{"model":"kimi-k2","messages":[{"role":"user","content":"Hola Kimi"}]}'`}</code>
+  -d '{"model":"gemini-flash","messages":[{"role":"user","content":"Hola Gemini"}]}'`}</code>
                       </pre>
                     </div>
                   </section>

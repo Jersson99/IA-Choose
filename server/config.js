@@ -75,12 +75,20 @@ export const config = {
     },
   },
   providers: {
+    google: {
+      apiKey: cleanEnvValue(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY),
+      modelId: cleanEnvValue(process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash'),
+      get isConfigured() {
+        return Boolean(this.apiKey);
+      },
+    },
     moonshot: {
-      apiKey: (process.env.MOONSHOT_API_KEY || '').trim(),
-      baseUrl: (process.env.MOONSHOT_BASE_URL || 'https://api.moonshot.ai/v1')
-        .trim()
-        .replace(/\/+$/, ''),
-      modelId: (process.env.MOONSHOT_MODEL_ID || 'kimi-k2-0711-preview').trim(),
+      apiKey: cleanEnvValue(process.env.MOONSHOT_API_KEY),
+      baseUrl: cleanEnvValue(process.env.MOONSHOT_BASE_URL || 'https://api.moonshot.ai/v1').replace(
+        /\/+$/,
+        ''
+      ),
+      modelId: cleanEnvValue(process.env.MOONSHOT_MODEL_ID || 'kimi-k2-0711-preview'),
       get isConfigured() {
         return Boolean(this.apiKey);
       },
