@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PixelRobot from '../components/PixelRobot.jsx';
 import {
   IconActivity,
-  IconApiKeys,
   IconAskQuestion,
   IconBilling,
   IconLogout,
@@ -21,7 +20,6 @@ const NAV_ITEMS = [
   { id: 'activity', label: 'Actividad e historial', sub: 'Activity', icon: IconActivity },
   { id: 'models', label: 'Modelos', sub: 'Models', icon: IconModels },
   { id: 'billing', label: 'Transacciones y saldo', sub: 'Billing', icon: IconBilling },
-  { id: 'apikeys', label: 'Claves API', sub: 'API Keys', icon: IconApiKeys },
   { id: 'settings', label: 'Configuración', sub: 'Settings', icon: IconSettings },
 ];
 
@@ -144,30 +142,135 @@ function renderFormattedMessage(text = '') {
     }
 
     const lines = part.split('\n');
+    const elements = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        elements.push(<div key={`empty-${i}`} className="msg-empty-line" />);
+        i += 1;
+        continue;
+      }
+
+      // Detectar tablas en Markdown (| Col 1 | Col 2 |)
+      if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+        const tableLines = [];
+        while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+          tableLines.push(lines[i].trim());
+          i += 1;
+        }
+        const parseRow = (r) =>
+          r
+            .slice(1, -1)
+            .split('|')
+            .map((c) => c.trim());
+        const isSeparator = (r) => /^\|?[\s:-]+\|[\s|:-]*$/.test(r);
+        const headerCells = tableLines.length > 0 ? parseRow(tableLines[0]) : [];
+        const bodyRows = tableLines
+          .slice(1)
+          .filter((r) => !isSeparator(r))
+          .map(parseRow);
+
+        elements.push(
+          <div
+            key={`tbl-${i}`}
+            style={{
+              overflowX: 'auto',
+              margin: '0.65rem 0',
+              borderRadius: '8px',
+              border: '1px solid rgba(148, 163, 184, 0.22)',
+            }}
+          >
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '0.82rem',
+                textAlign: 'left',
+              }}
+            >
+              {headerCells.length > 0 && (
+                <thead>
+                  <tr style={{ background: 'rgba(30, 41, 59, 0.85)' }}>
+                    {headerCells.map((cell, cIdx) => (
+                      <th
+                        key={cIdx}
+                        style={{
+                          padding: '0.5rem 0.7rem',
+                          borderBottom: '1px solid rgba(148, 163, 184, 0.25)',
+                          color: '#38bdf8',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {renderInlineFormatting(cell)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+              )}
+              <tbody>
+                {bodyRows.map((row, rIdx) => (
+                  <tr
+                    key={rIdx}
+                    style={{
+                      background: rIdx % 2 === 0 ? 'rgba(15, 23, 42, 0.45)' : 'transparent',
+                    }}
+                  >
+                    {row.map((cell, cIdx) => (
+                      <td
+                        key={cIdx}
+                        style={{
+                          padding: '0.45rem 0.7rem',
+                          borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
+                        }}
+                      >
+                        {renderInlineFormatting(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        continue;
+      }
+
+      if (trimmed.startsWith('#### ') || trimmed.startsWith('### ') || trimmed.startsWith('## ')) {
+        const cleanHead = trimmed.replace(/^#{2,4}\s+/, '');
+        elements.push(
+          <h4 key={`hd-${i}`} className="msg-subhead">
+            {renderInlineFormatting(cleanHead)}
+          </h4>
+        );
+        i += 1;
+        continue;
+      }
+
+      if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        elements.push(
+          <li key={`li-${i}`} className="msg-bullet-item">
+            {renderInlineFormatting(trimmed.slice(2))}
+          </li>
+        );
+        i += 1;
+        continue;
+      }
+
+      elements.push(
+        <p key={`p-${i}`} className="msg-paragraph">
+          {renderInlineFormatting(line)}
+        </p>
+      );
+      i += 1;
+    }
+
     return (
       <div key={idx} className="msg-text-segment">
-        {lines.map((line, lIdx) => {
-          if (!line.trim()) return <div key={lIdx} className="msg-empty-line" />;
-          if (line.startsWith('### ')) {
-            return (
-              <h4 key={lIdx} className="msg-subhead">
-                {line.replace('### ', '')}
-              </h4>
-            );
-          }
-          if (line.startsWith('- ') || line.startsWith('* ')) {
-            return (
-              <li key={lIdx} className="msg-bullet-item">
-                {renderInlineFormatting(line.slice(2))}
-              </li>
-            );
-          }
-          return (
-            <p key={lIdx} className="msg-paragraph">
-              {renderInlineFormatting(line)}
-            </p>
-          );
-        })}
+        {elements}
       </div>
     );
   });
@@ -513,7 +616,9 @@ export default function DashboardPage({ user, onLogout, robot }) {
       robot.say('peek', `Consultando a ${targetModel}...`, 2500);
 
       try {
-        const result = await dashboardApi.executeTask(initialPrompt, targetModel);
+        const result = await dashboardApi.executeTask(initialPrompt, targetModel, [
+          { role: 'user', content: initialPrompt },
+        ]);
         setData(result.dashboard);
         const modelMsg = {
           id: 'model-' + Date.now(),
@@ -524,6 +629,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
           cost: result.cost,
           latencyMs: result.latencyMs,
           tokens: result.tokens,
+          costBreakdown: result.costBreakdown,
           timestamp: new Date().toISOString(),
         };
         setChatMessages((prev) => [...prev, modelMsg]);
@@ -556,13 +662,21 @@ export default function DashboardPage({ user, onLogout, robot }) {
       timestamp: new Date().toISOString(),
     };
 
+    const historyPayload = [
+      ...chatMessages.map((m) => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text,
+      })),
+      { role: 'user', content: prompt },
+    ];
+
     setChatMessages((prev) => [...prev, userMsg]);
     setChatInput('');
     setSendingChat(true);
     robot.say('peek', `Consultando a ${selectedModel}...`, 2500);
 
     try {
-      const result = await dashboardApi.executeTask(prompt, selectedModel);
+      const result = await dashboardApi.executeTask(prompt, selectedModel, historyPayload);
       setData(result.dashboard);
       const modelMsg = {
         id: 'model-' + Date.now(),
@@ -573,6 +687,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
         cost: result.cost,
         latencyMs: result.latencyMs,
         tokens: result.tokens,
+        costBreakdown: result.costBreakdown,
         timestamp: new Date().toISOString(),
       };
       setChatMessages((prev) => [...prev, modelMsg]);
@@ -1447,6 +1562,44 @@ export default function DashboardPage({ user, onLogout, robot }) {
              * MODO 2: Workspace de preguntas directas al modelo activo o alternativo
              * ================================================================= */}
             {activeTab === 'ask' && selectedModel && (() => {
+              const modelTurns = chatMessages.filter((m) => m.sender === 'model' && m.costBreakdown);
+              const threadSummary = modelTurns.reduce(
+                (acc, m) => {
+                  const cb = m.costBreakdown || {};
+                  const tk = m.tokens || {};
+                  acc.turns += 1;
+                  acc.inputTokens += Number(tk.inputTokens) || 0;
+                  acc.cachedTokens += Number(tk.cachedTokens) || 0;
+                  acc.outputTokens += Number(tk.outputTokens) || 0;
+                  acc.reasoningTokens += Number(tk.reasoningTokens) || 0;
+                  acc.providerUsd += Number(cb.providerCostUsd) || 0;
+                  acc.providerCop += Number(cb.providerCostCop) || 0;
+                  acc.overheadCop += Number(cb.operationalOverheadCop) || 0;
+                  acc.internalCop += Number(cb.totalInternalCostCop) || 0;
+                  acc.chargedCop += Number(cb.userChargedCop) || 0;
+                  acc.profitCop += Number(cb.netProfitCop) || 0;
+                  return acc;
+                },
+                {
+                  turns: 0,
+                  inputTokens: 0,
+                  cachedTokens: 0,
+                  outputTokens: 0,
+                  reasoningTokens: 0,
+                  providerUsd: 0,
+                  providerCop: 0,
+                  overheadCop: 0,
+                  internalCop: 0,
+                  chargedCop: 0,
+                  profitCop: 0,
+                }
+              );
+              const latestDbAudit = (data?.recentCostAudits || [])[0] || null;
+              const threadMarginPct =
+                threadSummary.chargedCop > 0
+                  ? Math.round((threadSummary.profitCop / threadSummary.chargedCop) * 1000) / 10
+                  : 0;
+
               return (
                 <div className="dashboard-section-stack model-workspace-shell">
                   {/* Encabezado del Workspace con botón para volver al enrutador */}
@@ -1460,8 +1613,136 @@ export default function DashboardPage({ user, onLogout, robot }) {
                       >
                         ← Volver al Enrutador
                       </button>
+                      {chatMessages.length > 0 && (
+                        <button
+                          type="button"
+                          className="model-workspace-back-btn"
+                          style={{ marginLeft: '0.5rem' }}
+                          onClick={() => {
+                            setChatMessages([]);
+                            robot.say(
+                              'happy',
+                              'Contexto reiniciado a 0 tokens para ahorrar en tu próxima consulta',
+                              2600
+                            );
+                          }}
+                          title="Limpiar el historial de esta conversación para no reenviar tokens acumulados"
+                        >
+                          ＋ Nuevo hilo (Reiniciar contexto)
+                        </button>
+                      )}
                     </div>
                   </header>
+
+                  {/* Monitor de Rentabilidad en Vivo (Auditoría de Tokens y Ganancia Neta) */}
+                  {(threadSummary.turns > 0 || latestDbAudit) && (
+                    <div
+                      style={{
+                        background: 'rgba(15, 23, 42, 0.78)',
+                        border: '1px solid rgba(56, 189, 248, 0.28)',
+                        borderRadius: '12px',
+                        padding: '0.75rem 1rem',
+                        marginBottom: '0.75rem',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.75rem',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      {threadSummary.turns > 0 ? (
+                        <>
+                          <div>
+                            <strong style={{ color: '#38bdf8' }}>
+                              📊 Auditoría en Vivo del Hilo ({threadSummary.turns}{' '}
+                              {threadSummary.turns === 1 ? 'turno' : 'turnos'})
+                            </strong>
+                            <div style={{ color: '#94a3b8', marginTop: '0.15rem' }}>
+                              Contexto enviado: <strong>{threadSummary.inputTokens} tok</strong> (
+                              {threadSummary.cachedTokens} caché) · Salida:{' '}
+                              <strong>{threadSummary.outputTokens} tok</strong> (
+                              {threadSummary.reasoningTokens} razonamiento)
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
+                            <span>
+                              Costo Proveedor:{' '}
+                              <strong>
+                                ${threadSummary.providerCop.toFixed(2)} COP
+                              </strong>{' '}
+                              <small style={{ color: '#94a3b8' }}>
+                                (${threadSummary.providerUsd.toFixed(6)} USD)
+                              </small>
+                            </span>
+                            <span>
+                              Operativo + Wompi:{' '}
+                              <strong>${threadSummary.overheadCop.toFixed(2)} COP</strong>
+                            </span>
+                            <span>
+                              Cobrado Usuario: <strong>${threadSummary.chargedCop} COP</strong>
+                            </span>
+                            <span
+                              style={{
+                                color: threadSummary.profitCop >= 0 ? '#4ade80' : '#f87171',
+                                fontWeight: 700,
+                              }}
+                            >
+                              Ganancia Neta:{' '}
+                              {threadSummary.profitCop >= 0 ? '+' : ''}$
+                              {threadSummary.profitCop.toFixed(2)} COP ({threadMarginPct}%)
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <strong style={{ color: '#38bdf8' }}>
+                              📊 Última Auditoría Real Registrada ({latestDbAudit.remote_model_id})
+                            </strong>
+                            <div style={{ color: '#94a3b8', marginTop: '0.15rem' }}>
+                              Entrada: <strong>{latestDbAudit.prompt_tokens_total} tok</strong> (
+                              {latestDbAudit.input_cached_tokens} caché) · Salida:{' '}
+                              <strong>{latestDbAudit.output_tokens_total} tok</strong> (
+                              {latestDbAudit.reasoning_tokens} razonamiento)
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
+                            <span>
+                              Costo Proveedor:{' '}
+                              <strong>
+                                ${Number(latestDbAudit.provider_cost_cop).toFixed(2)} COP
+                              </strong>{' '}
+                              <small style={{ color: '#94a3b8' }}>
+                                (${Number(latestDbAudit.provider_cost_usd).toFixed(6)} USD)
+                              </small>
+                            </span>
+                            <span>
+                              Operativo + Wompi:{' '}
+                              <strong>
+                                ${Number(latestDbAudit.operational_overhead_cop).toFixed(2)} COP
+                              </strong>
+                            </span>
+                            <span>
+                              Cobrado Usuario:{' '}
+                              <strong>${latestDbAudit.user_charged_cop} COP</strong>
+                            </span>
+                            <span
+                              style={{
+                                color:
+                                  Number(latestDbAudit.net_profit_cop) >= 0 ? '#4ade80' : '#f87171',
+                                fontWeight: 700,
+                              }}
+                            >
+                              Ganancia Neta: +$
+                              {Number(latestDbAudit.net_profit_cop).toFixed(2)} COP (
+                              {latestDbAudit.net_margin_pct}%)
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {/* Tarjeta del Chat / Conversación con el modelo */}
                   <div className="model-chat-stream-card">
@@ -1518,7 +1799,19 @@ export default function DashboardPage({ user, onLogout, robot }) {
                                     <div className="chat-msg-tags">
                                       {msg.latencyMs && <span>{msg.latencyMs} ms</span>}
                                       {msg.tokens?.totalTokens && (
-                                        <span>{msg.tokens.totalTokens} tokens</span>
+                                        <span
+                                          title={`Entrada: ${msg.tokens.inputTokens || 0} tok (${msg.tokens.cachedTokens || 0} en caché) · Salida: ${msg.tokens.outputTokens || 0} tok`}
+                                        >
+                                          {msg.tokens.inputTokens} in / {msg.tokens.outputTokens} out
+                                        </span>
+                                      )}
+                                      {msg.tokens?.cachedTokens > 0 && (
+                                        <span title="Tokens servidos desde el Context Cache con tarifa reducida">
+                                          ⚡ {msg.tokens.cachedTokens} caché
+                                          {msg.tokens.cacheSavingsCop > 0
+                                            ? ` (-$${msg.tokens.cacheSavingsCop} COP)`
+                                            : ''}
+                                        </span>
                                       )}
                                       {msg.cost && <span className="cost-tag">{msg.cost}</span>}
                                     </div>
@@ -1533,6 +1826,62 @@ export default function DashboardPage({ user, onLogout, robot }) {
                                     renderFormattedMessage(msg.text)
                                   )}
                                 </div>
+
+                                {msg.sender === 'model' && msg.costBreakdown && (
+                                  <div
+                                    style={{
+                                      marginTop: '0.65rem',
+                                      paddingTop: '0.55rem',
+                                      borderTop: '1px dashed rgba(148, 163, 184, 0.22)',
+                                      display: 'flex',
+                                      flexWrap: 'wrap',
+                                      gap: '0.6rem 1rem',
+                                      fontSize: '0.74rem',
+                                      color: '#94a3b8',
+                                    }}
+                                  >
+                                    <span>
+                                      🔢 <strong>Entrada:</strong> {msg.tokens?.inputTokens || 0} tok
+                                      {msg.tokens?.cachedTokens > 0
+                                        ? ` (${msg.tokens.cachedTokens} caché)`
+                                        : ''}
+                                    </span>
+                                    <span>
+                                      🧠 <strong>Salida:</strong> {msg.tokens?.outputTokens || 0} tok
+                                      {msg.tokens?.reasoningTokens > 0
+                                        ? ` (${msg.tokens.reasoningTokens} razonamiento)`
+                                        : ''}
+                                    </span>
+                                    <span>
+                                      💵 <strong>Costo Proveedor:</strong> $
+                                      {Number(msg.costBreakdown.providerCostCop || 0).toFixed(2)} COP (
+                                      ${Number(msg.costBreakdown.providerCostUsd || 0).toFixed(6)} USD)
+                                    </span>
+                                    <span>
+                                      ⚙️ <strong>Operativo + Wompi:</strong> $
+                                      {Number(msg.costBreakdown.operationalOverheadCop || 0).toFixed(2)}{' '}
+                                      COP
+                                    </span>
+                                    <span>
+                                      💳 <strong>Cobrado:</strong> $
+                                      {msg.costBreakdown.userChargedCop} COP
+                                    </span>
+                                    <span
+                                      style={{
+                                        color:
+                                          Number(msg.costBreakdown.netProfitCop) >= 0
+                                            ? '#4ade80'
+                                            : '#f87171',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      📈 Ganancia Neta:{' '}
+                                      {Number(msg.costBreakdown.netProfitCop) >= 0 ? '+' : ''}$
+                                      {Number(msg.costBreakdown.netProfitCop || 0).toFixed(2)} COP (
+                                      {msg.costBreakdown.netMarginPct}%)
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -2293,261 +2642,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
             )}
 
             {/* =================================================================
-             * SECCIÓN 6: CLAVES API Y GATEWAY DE PROVEEDORES (MOONSHOT KIMI)
-             * ================================================================= */}
-            {activeTab === 'apikeys' && (
-              <div className="dashboard-section-stack">
-                <section className="saas-panel-card">
-                  <div className="wompi-header-row">
-                    <div>
-                      <h2 className="panel-title">
-                        Gateway de API para Clientes (`iac_live_...`) · Moonshot Kimi
-                      </h2>
-                      <p className="panel-subtitle">
-                        Comparte acceso a Moonshot Kimi K2 y al enrutador de IA CHOOSE sin exponer tu llave maestra del proveedor. Cada llamada descuenta automáticamente en COP del saldo recargado por el cliente.
-                      </p>
-                    </div>
-                    <span
-                      className={`availability-pill ${
-                        data?.moonshot?.isConfigured ? 'is-online' : 'is-pilot'
-                      }`}
-                    >
-                      {data?.moonshot?.isConfigured
-                        ? `Moonshot Kimi API Activa (${data.moonshot.modelId})`
-                        : 'Moonshot Kimi · Modo Piloto (Configura MOONSHOT_API_KEY en .env)'}
-                    </span>
-                  </div>
-
-                  <form className="api-key-create-bar" onSubmit={handleCreateApiKey}>
-                    <input
-                      type="text"
-                      className="saas-input"
-                      placeholder="Nombre de la clave (ej. Cliente App Móvil, Proyecto Tesis, Script Python)..."
-                      value={newKeyName}
-                      onChange={(e) => setNewKeyName(e.target.value)}
-                      required
-                    />
-                    <button type="submit" className="btn-primary-green compact-btn" disabled={creatingKey}>
-                      {creatingKey ? 'Generando...' : '+ Crear nueva clave API'}
-                    </button>
-                  </form>
-
-                  {justCreatedSecret && (
-                    <div className="secret-key-reveal-box" role="alert">
-                      <div>
-                        <strong>Copia tu nueva clave API ahora (solo se muestra una vez):</strong>
-                        <code className="secret-code-pill">{justCreatedSecret}</code>
-                      </div>
-                      <div className="secret-actions">
-                        <button
-                          type="button"
-                          className="seg-pill active"
-                          onClick={() => {
-                            navigator.clipboard?.writeText(justCreatedSecret);
-                            showToast('Clave copiada', 'La clave API se copió al portapapeles.');
-                          }}
-                        >
-                          Copiar clave
-                        </button>
-                        <button
-                          type="button"
-                          className="seg-pill"
-                          onClick={() => setJustCreatedSecret(null)}
-                        >
-                          Ocultar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="saas-table-wrap">
-                    <table className="saas-table">
-                      <thead>
-                        <tr>
-                          <th>Nombre</th>
-                          <th>Clave (Enmascarada)</th>
-                          <th>Fecha de creación</th>
-                          <th>Último uso</th>
-                          <th>Estado</th>
-                          <th className="num-cell">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {apiKeys.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="empty-table-cell">
-                              Aún no has creado claves API en tu cuenta. Crea una arriba para probar el Gateway.
-                            </td>
-                          </tr>
-                        ) : (
-                          apiKeys.map((k) => (
-                            <tr key={k.id}>
-                              <td>
-                                <strong>{k.name}</strong>
-                              </td>
-                              <td className="mono-td">{k.key_prefix}</td>
-                              <td className="mono-td">{formatDateTime(k.created_at)}</td>
-                              <td className="mono-td">
-                                {k.last_used_at ? formatDateTime(k.last_used_at) : 'Sin uso aún'}
-                              </td>
-                              <td>
-                                <span
-                                  className={`status-badge ${
-                                    k.status === 'active' ? 'status-ok' : 'status-revoked'
-                                  }`}
-                                >
-                                  {k.status === 'active' ? 'Activa' : 'Revocada'}
-                                </span>
-                              </td>
-                              <td className="num-cell">
-                                {k.status === 'active' ? (
-                                  <button
-                                    type="button"
-                                    className="revoke-key-btn"
-                                    onClick={() => handleRevokeApiKey(k.id)}
-                                  >
-                                    Revocar
-                                  </button>
-                                ) : (
-                                  <span className="muted-dash">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-
-                {/* Probador en vivo del Gateway + Guía de consumo para clientes */}
-                <div className="usage-two-col-grid">
-                  <section className="saas-panel-card">
-                    <h3 className="panel-title">Probador en Vivo del Gateway (`/api/v1/chat/completions`)</h3>
-                    <p className="panel-subtitle">
-                      Simula una petición de un cliente externo hacia Google AI (Gemini) y verifica cómo se descuenta en tiempo real de tu saldo disponible ({formatCop(kpis.balanceCop)}).
-                    </p>
-
-                    <form className="topup-form" onSubmit={handleTestGateway}>
-                      <div className="topup-fields-grid">
-                        <label className="saas-form-label">
-                          <span>Clave API Cliente (`iac_live_...`)</span>
-                          <input
-                            type="text"
-                            className="saas-input"
-                            placeholder="Opcional: pega tu iac_live_... (o usa tu sesión)"
-                            value={gatewayTestKey}
-                            onChange={(e) => setGatewayTestKey(e.target.value)}
-                          />
-                        </label>
-
-                        <label className="saas-form-label">
-                          <span>Modelo solicitado al Gateway</span>
-                          <select
-                            className="saas-select full-width"
-                            value={gatewayTestModel}
-                            onChange={(e) => setGatewayTestModel(e.target.value)}
-                          >
-                            <option value="gemini-flash">gemini-flash (Google AI · Gemini 2.5 Flash · $9 COP base)</option>
-                            <option value="auto">auto (Enrutador Inteligente IA CHOOSE)</option>
-                            <option value="kimi-k2">kimi-k2 (Moonshot Kimi K2 · $18 COP base)</option>
-                            <option value="deepseek-r1">deepseek-r1 (DeepSeek R1 · $14 COP)</option>
-                            <option value="claude-sonnet">claude-sonnet (Claude 3.7 Sonnet · $58 COP)</option>
-                          </select>
-                        </label>
-                      </div>
-
-                      <label className="saas-form-label">
-                        <span>Mensaje (`messages[0].content`)</span>
-                        <textarea
-                          rows={3}
-                          className="saas-input"
-                          value={gatewayTestPrompt}
-                          onChange={(e) => setGatewayTestPrompt(e.target.value)}
-                          required
-                        />
-                      </label>
-
-                      <button type="submit" className="btn-primary-green" disabled={testingGateway}>
-                        {testingGateway
-                          ? 'Invocando Google AI (Gemini) y debitando saldo...'
-                          : 'Ejecutar Petición API y Descontar Saldo en COP'}
-                      </button>
-                    </form>
-
-                    {gatewayTestResult && (
-                      <div className="wompi-integrity-box">
-                        <span>
-                          Respuesta de <strong>{gatewayTestResult.model_name}</strong> · Cobro:{' '}
-                          <strong className="positive-amount">
-                            {gatewayTestResult.ia_choose_billing?.charged_formatted}
-                          </strong>{' '}
-                          · Saldo restante:{' '}
-                          <strong>
-                            {formatCop(gatewayTestResult.ia_choose_billing?.remaining_balance_cop)}
-                          </strong>
-                        </span>
-                        <code>
-                          {JSON.stringify(
-                            {
-                              id: gatewayTestResult.id,
-                              model: gatewayTestResult.model,
-                              reply: gatewayTestResult.choices?.[0]?.message?.content?.slice(0, 180) + '...',
-                              usage: gatewayTestResult.usage,
-                              ia_choose_billing: gatewayTestResult.ia_choose_billing,
-                            },
-                            null,
-                            2
-                          )}
-                        </code>
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="saas-panel-card">
-                    <h3 className="panel-title">Cómo tus clientes consumen la API de Google AI (Gemini)</h3>
-                    <p className="panel-subtitle">
-                      El endpoint de IA CHOOSE es 100 % compatible con el SDK de OpenAI. Tus clientes usan su clave <code>iac_live_...</code> y nunca ven tu llave maestra de Google AI.
-                    </p>
-
-                    <div className="msg-code-block">
-                      <div className="msg-code-header">
-                        <span>Python (SDK OpenAI compatible con IA CHOOSE)</span>
-                      </div>
-                      <pre>
-                        <code>{`from openai import OpenAI
-
-client = OpenAI(
-    api_key="${justCreatedSecret || 'iac_live_tu_clave_de_cliente'}",
-    base_url="${window.location.origin}/api/v1"
-)
-
-res = client.chat.completions.create(
-    model="gemini-flash", # o "auto" para enrutamiento inteligente
-    messages=[{"role": "user", "content": "Resume este artículo académico"}]
-)
-print(res.choices[0].message.content)`}</code>
-                      </pre>
-                    </div>
-
-                    <div className="msg-code-block">
-                      <div className="msg-code-header">
-                        <span>cURL / Terminal</span>
-                      </div>
-                      <pre>
-                        <code>{`curl -X POST ${window.location.origin}/api/v1/chat/completions \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer ${justCreatedSecret || 'iac_live_tu_clave_de_cliente'}" \\
-  -d '{"model":"gemini-flash","messages":[{"role":"user","content":"Hola Gemini"}]}'`}</code>
-                      </pre>
-                    </div>
-                  </section>
-                </div>
-              </div>
-            )}
-
-            {/* =================================================================
-             * SECCIÓN 7: CONFIGURACIÓN (SETTINGS)
+             * SECCIÓN 6: CONFIGURACIÓN (SETTINGS)
              * ================================================================= */}
             {activeTab === 'settings' && (
               <div className="dashboard-section-stack">

@@ -117,7 +117,7 @@ export const config = {
         return getEnv('GEMINI_API_KEY') || getEnv('GOOGLE_AI_API_KEY');
       },
       get modelId() {
-        return getEnv('GEMINI_MODEL_ID', 'gemini-3.5-flash-lite');
+        return getEnv('GEMINI_MODEL_ID', 'gemini-4-hydrogen');
       },
       get isConfigured() {
         return Boolean(this.apiKey);
@@ -131,7 +131,21 @@ export const config = {
         return getEnv('MOONSHOT_BASE_URL', 'https://api.moonshot.ai/v1').replace(/\/+$/, '');
       },
       get modelId() {
-        return getEnv('MOONSHOT_MODEL_ID', 'kimi-k2-0711-preview');
+        return getEnv('MOONSHOT_MODEL_ID', 'kimi-k2.6');
+      },
+      get isConfigured() {
+        return Boolean(this.apiKey);
+      },
+    },
+    deepseek: {
+      get apiKey() {
+        return getEnv('DEEPSEEK_API_KEY');
+      },
+      get baseUrl() {
+        return getEnv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+      },
+      get modelId() {
+        return getEnv('DEEPSEEK_MODEL_ID', 'deepseek-reasoner');
       },
       get isConfigured() {
         return Boolean(this.apiKey);

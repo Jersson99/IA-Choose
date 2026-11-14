@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { HttpError } from '../errors.js';
+import { costEngineService, estimateTokensFromText } from './costEngineService.js';
 
 export function generateFallbackResponse(prompt, model, domain) {
   const clean = String(prompt || '').toLowerCase();
@@ -63,8 +64,17 @@ export const llmProviderService = {
   /**
    * Invoca la API oficial de Google AI (Gemini) cuando GEMINI_API_KEY está configurada en .env,
    * o Moonshot AI (Kimi) si MOONSHOT_API_KEY está configurada.
+   * Devuelve el objeto normalizado de uso (incluyendo cachedTokens, cacheWriteTokens y reasoningTokens).
    */
-  async generateCompletion({ modelRow, messages, promptText, domain, complexity = 0.35 }) {
+  async generateCompletion({
+    modelRow,
+    messages,
+    promptText,
+    domain,
+    complexity = 0.35,
+    maxOutputTokens = 2048,
+    contextInfo = null,
+  }) {
     const startMs = Date.now();
     const isGeminiModel =
       modelRow.slug === 'gemini-flash' ||
@@ -76,110 +86,100 @@ export const llmProviderService = {
       modelRow.name.toLowerCase().includes('kimi') ||
       modelRow.provider.toLowerCase().includes('moonshot');
 
-    // 1. Conexión en vivo con Google AI (Gemini API) cuando GEMINI_API_KEY está en .env
-    // Se usa para Gemini 2.5 Flash o como proveedor real general si es la llave activa en el servidor
-    if (
-      config.providers.google.isConfigured &&
-      (isGeminiModel || !config.providers.moonshot.isConfigured || !isKimiModel)
-    ) {
-      const geminiCandidates = [
-        'gemini-3.5-flash-lite',
-        'gemini-flash-lite-latest',
-        config.providers.google.modelId,
-        'gemini-3.1-flash-lite',
-        'gemini-3.6-flash',
-        'gemini-3.7-flash',
-      ];
-      const uniqueGeminiModels = [...new Set(geminiCandidates.filter(Boolean))];
+    const isDeepSeekModel =
+      modelRow.slug.startsWith('deepseek') ||
+      modelRow.name.toLowerCase().includes('deepseek') ||
+      modelRow.provider.toLowerCase().includes('deepseek');
 
-      const contents =
-        Array.isArray(messages) && messages.length > 0
-          ? messages
-              .filter((m) => m?.role !== 'system' && m?.content)
-              .map((m) => ({
-                role: m.role === 'assistant' ? 'model' : 'user',
-                parts: [{ text: String(m.content) }],
-              }))
-          : [{ role: 'user', parts: [{ text: String(promptText) }] }];
-
-      const systemMsg =
-        Array.isArray(messages) && messages.find((m) => m?.role === 'system')?.content;
-
-      let lastGeminiErr = null;
-      for (const remoteModelId of uniqueGeminiModels) {
-        try {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-            remoteModelId
-          )}:generateContent?key=${encodeURIComponent(config.providers.google.apiKey)}`;
-
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: AbortSignal.timeout(12000),
-            body: JSON.stringify({
-              systemInstruction: {
-                parts: [
-                  {
-                    text:
-                      systemMsg ||
-                      `Eres ${modelRow.name}, modelo integrado en la plataforma colombiana IA CHOOSE. Responde siempre en español claro, preciso y bien estructurado.`,
-                  },
-                ],
-              },
-              contents: contents.length > 0 ? contents : [{ role: 'user', parts: [{ text: String(promptText) }] }],
-              generationConfig: {
-                temperature: 0.6,
-              },
-            }),
-          });
-
-          if (!response.ok) {
-            const errBody = await response.json().catch(() => ({}));
-            const msg = errBody?.error?.message || `HTTP ${response.status}`;
-            if (response.status === 404 || response.status === 503 || response.status === 429) {
-              lastGeminiErr = new Error(msg);
-              continue;
-            }
-            throw new HttpError(502, `Error desde Google AI (Gemini): ${msg}`);
-          }
-
-          const data = await response.json();
-          const parts = data?.candidates?.[0]?.content?.parts || [];
-          const replyText =
-            parts.map((p) => p?.text || '').join('') ||
-            'Respuesta recibida desde Google AI (Gemini) sin contenido de texto.';
-
-          const inputTokens =
-            Number(data?.usageMetadata?.promptTokenCount) ||
-            Math.max(32, Math.round(promptText.split(/\s+/).length * 1.6));
-          const outputTokens =
-            Number(data?.usageMetadata?.candidatesTokenCount) ||
-            Math.max(48, Math.round(replyText.split(/\s+/).length * 1.4));
-          const latencyMs = Math.max(100, Date.now() - startMs);
-
-          return {
-            reply: replyText,
-            inputTokens,
-            outputTokens,
-            latencyMs,
-            liveProvider: true,
-            remoteModelId,
-          };
-        } catch (err) {
-          if (err instanceof HttpError) throw err;
-          lastGeminiErr = err;
-        }
-      }
-
-      if (lastGeminiErr) {
+    // 0. Si el usuario seleccionó DeepSeek, exigimos conexión real con DeepSeek API (sin fallback falso)
+    if (isDeepSeekModel) {
+      if (!config.providers.deepseek.isConfigured) {
         throw new HttpError(
-          502,
-          `No se pudo completar la consulta en Google AI (Gemini): ${lastGeminiErr.message}`
+          400,
+          `Para consultar ${modelRow.name} en tiempo real, agrega tu clave DEEPSEEK_API_KEY=... en el archivo .env en la raíz de IA-Choose (puedes generarla en https://platform.deepseek.com/api_keys).`
         );
       }
+
+      const modelRate = costEngineService.getPricingForModel(modelRow.slug, modelRow);
+      const remoteModelId = modelRate?.remote_model_id || config.providers.deepseek.modelId || 'deepseek-reasoner';
+      const normalizedMessages =
+        Array.isArray(messages) && messages.length > 0
+          ? messages
+          : [
+              {
+                role: 'system',
+                content: `Eres ${modelRow.name}, modelo de DeepSeek integrado en la plataforma colombiana IA CHOOSE. Responde siempre en español claro, preciso y bien estructurado.`,
+              },
+              { role: 'user', content: promptText },
+            ];
+
+      const isFlashModel = remoteModelId === 'deepseek-flash';
+
+      const response = await fetch(`${config.providers.deepseek.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.providers.deepseek.apiKey}`,
+        },
+        signal: AbortSignal.timeout(90000),
+        body: JSON.stringify({
+          model: remoteModelId,
+          messages: normalizedMessages,
+          // En DeepSeek V4.1 Flash desactivamos el pensamiento interno para máxima velocidad (3-8s) y ahorro;
+          // en DeepSeek V4 Pro y DeepSeek R1 mantenemos el razonamiento activo con effort:"low".
+          ...(isFlashModel ? { thinking: { type: 'disabled' } } : { effort: 'low' }),
+          max_tokens: Math.max(8192, Number(maxOutputTokens) || 8192),
+          ...(remoteModelId === 'deepseek-reasoner' ? {} : { temperature: 0.6 }),
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        const msg = errBody?.error?.message || `HTTP ${response.status}`;
+        throw new HttpError(
+          response.status === 402 ? 402 : 502,
+          `Error desde DeepSeek API (${remoteModelId}): ${msg}`
+        );
+      }
+
+      const data = await response.json();
+      const msgObj = data?.choices?.[0]?.message || {};
+      const replyText =
+        msgObj.content?.trim() ||
+        msgObj.reasoning_content?.trim() ||
+        'Respuesta recibida desde DeepSeek API sin contenido de texto.';
+
+      const hasUsageBlock = Boolean(data?.usage?.prompt_tokens);
+      const inputTokens =
+        Number(data?.usage?.prompt_tokens) ||
+        contextInfo?.estimatedInputTokens ||
+        estimateTokensFromText(promptText) + 32;
+      const cachedTokens =
+        Number(data?.usage?.prompt_cache_hit_tokens) ||
+        Number(data?.usage?.prompt_tokens_details?.cached_tokens) ||
+        0;
+      const outputTokens =
+        Number(data?.usage?.completion_tokens) ||
+        estimateTokensFromText(replyText);
+      const reasoningTokens =
+        Number(data?.usage?.completion_tokens_details?.reasoning_tokens) || 0;
+      const latencyMs = Math.max(120, Date.now() - startMs);
+
+      return {
+        reply: replyText,
+        inputTokens,
+        cachedTokens,
+        cacheWriteTokens: 0,
+        outputTokens,
+        reasoningTokens,
+        isEstimatedUsage: !hasUsageBlock,
+        latencyMs,
+        liveProvider: true,
+        remoteModelId: data?.model || remoteModelId,
+      };
     }
 
-    // 2. Si es Moonshot Kimi y el administrador configuró MOONSHOT_API_KEY en el servidor
+    // 1. Si es Moonshot Kimi y MOONSHOT_API_KEY está configurada en el servidor, priorizamos la API oficial de Moonshot
     if (isKimiModel && config.providers.moonshot.isConfigured) {
       const normalizedMessages =
         Array.isArray(messages) && messages.length > 0
@@ -195,8 +195,9 @@ export const llmProviderService = {
 
       const candidateModelIds = [
         config.providers.moonshot.modelId,
-        'kimi-k2-0711-preview',
-        'moonshot-v1-8k',
+        'kimi-k2.6',
+        'kimi-k2.7-code',
+        'kimi-k2-0905-preview',
       ];
       const uniqueModels = [...new Set(candidateModelIds.filter(Boolean))];
 
@@ -209,9 +210,11 @@ export const llmProviderService = {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${config.providers.moonshot.apiKey}`,
             },
+            signal: AbortSignal.timeout(25000),
             body: JSON.stringify({
               model: remoteModelId,
               messages: normalizedMessages,
+              max_tokens: maxOutputTokens,
               temperature: 0.6,
             }),
           });
@@ -219,8 +222,8 @@ export const llmProviderService = {
           if (!response.ok) {
             const errBody = await response.json().catch(() => ({}));
             const msg = errBody?.error?.message || `HTTP ${response.status}`;
-            // Si el modelo específico no existe en la cuenta, probar el siguiente fallback (ej. moonshot-v1-8k)
-            if (response.status === 404 || response.status === 400) {
+            // Solo probamos el siguiente ID candidato si el modelo específico devuelve 404 (no encontrado)
+            if (response.status === 404) {
               lastErr = new Error(msg);
               continue;
             }
@@ -231,18 +234,33 @@ export const llmProviderService = {
           const replyText =
             data?.choices?.[0]?.message?.content ||
             'Respuesta recibida desde Moonshot Kimi sin contenido de texto.';
+
+          const hasUsageBlock = Boolean(data?.usage?.prompt_tokens);
           const inputTokens =
             Number(data?.usage?.prompt_tokens) ||
-            Math.max(48, Math.round(promptText.split(/\s+/).length * 16));
+            contextInfo?.estimatedInputTokens ||
+            estimateTokensFromText(promptText) + 32;
+          const cachedTokens =
+            Number(data?.usage?.prompt_tokens_details?.cached_tokens) ||
+            Number(data?.usage?.cached_tokens) ||
+            0;
+          const cacheWriteTokens =
+            Number(data?.usage?.prompt_tokens_details?.cache_write_tokens) || 0;
           const outputTokens =
             Number(data?.usage?.completion_tokens) ||
-            Math.max(64, Math.round(replyText.split(/\s+/).length * 1.4));
+            estimateTokensFromText(replyText);
+          const reasoningTokens =
+            Number(data?.usage?.completion_tokens_details?.reasoning_tokens) || 0;
           const latencyMs = Math.max(120, Date.now() - startMs);
 
           return {
             reply: replyText,
             inputTokens,
+            cachedTokens,
+            cacheWriteTokens,
             outputTokens,
+            reasoningTokens,
+            isEstimatedUsage: !hasUsageBlock,
             latencyMs,
             liveProvider: true,
             remoteModelId,
@@ -261,20 +279,194 @@ export const llmProviderService = {
       }
     }
 
-    // Modo Piloto / Simulación realista cuando aún no se ha puesto la llave maestra en .env
-    const words = String(promptText || '').trim().split(/\s+/).length;
-    const inputTokens = Math.max(48, Math.round(words * 18 + complexity * 620));
-    const outputTokens = Math.max(120, Math.round(180 + complexity * 940));
-    const latencyMs = Math.round(modelRow.latency_sec * 1000 + (Math.random() * 180 - 90));
+    // Si el usuario seleccionó cualquier modelo de Google AI Pro, exigimos conexión real (sin simulación falsa)
+    if (isGeminiModel && !config.providers.google.isConfigured) {
+      throw new HttpError(
+        400,
+        `Para consultar ${modelRow.name} en tiempo real, agrega tu clave GEMINI_API_KEY=... en el archivo .env en la raíz de IA-Choose (puedes generarla en https://aistudio.google.com/app/apikey).`
+      );
+    }
+
+    // 2. Conexión en vivo con Google AI (v1beta/models/<remote_model_id>:generateContent) cuando GEMINI_API_KEY está en .env
+    if (
+      config.providers.google.isConfigured &&
+      (isGeminiModel || !config.providers.moonshot.isConfigured || !isKimiModel)
+    ) {
+      const modelRate = costEngineService.getPricingForModel(modelRow.slug, modelRow);
+      const primaryRemoteModelId =
+        isGeminiModel && modelRate?.remote_model_id
+          ? modelRate.remote_model_id
+          : config.providers.google.modelId;
+
+      const geminiCandidates = isGeminiModel
+        ? [primaryRemoteModelId, primaryRemoteModelId] // Reintento sobre el mismo modelo exacto si hay pico 503
+        : [
+            primaryRemoteModelId,
+            'gemini-4-hydrogen',
+            'gemini-3.5-flash',
+            'gemini-3.5-flash-lite',
+          ];
+
+      const systemMsg =
+        (Array.isArray(messages) && messages.find((m) => m?.role === 'system')?.content) ||
+        `Eres ${modelRow.name}, modelo integrado en la plataforma colombiana IA CHOOSE. Responde siempre en español claro, preciso y bien estructurado.`;
+
+      const contents =
+        Array.isArray(messages) && messages.length > 0
+          ? messages
+              .filter((m) => m?.role !== 'system' && m?.content)
+              .map((m) => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: String(m.content) }],
+              }))
+          : [{ role: 'user', parts: [{ text: String(promptText) }] }];
+
+      let lastGeminiErr = null;
+      const effectiveMaxOutputTokens = Math.max(8192, Number(maxOutputTokens) || 8192);
+
+      for (let attempt = 0; attempt < geminiCandidates.length; attempt += 1) {
+        const remoteModelId = geminiCandidates[attempt];
+        try {
+          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+            remoteModelId
+          )}:generateContent?key=${encodeURIComponent(config.providers.google.apiKey)}`;
+
+          const generationConfig = {
+            temperature: 0.6,
+            maxOutputTokens: effectiveMaxOutputTokens,
+          };
+
+          // Los modelos gemma-* no admiten thinkingBudget en generationConfig;
+          // en los modelos gemini-* limitamos thinkingBudget a 1024 para proteger tokens visibles y margen
+          if (!remoteModelId.startsWith('gemma-')) {
+            generationConfig.thinkingConfig = {
+              thinkingBudget: 1024,
+            };
+          }
+
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(60000),
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: systemMsg }],
+              },
+              contents:
+                contents.length > 0
+                  ? contents
+                  : [{ role: 'user', parts: [{ text: String(promptText) }] }],
+              generationConfig,
+            }),
+          });
+
+          if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            const msg = errBody?.error?.message || `HTTP ${response.status}`;
+
+            if (response.status === 429 && isGeminiModel) {
+              throw new HttpError(
+                429,
+                `Google AI Studio reportó límite de cuota (HTTP 429 Free Tier) para ${modelRow.name} (${remoteModelId}). Para habilitar cuota de API en este modelo dentro de AI Studio, vincula "Set up Billing" (Tier 1) en https://aistudio.google.com/app/api-keys. Tu saldo en IA Choose no fue descontado ($0 COP).`
+              );
+            }
+
+            if (response.status === 503 && attempt < geminiCandidates.length - 1) {
+              await new Promise((r) => setTimeout(r, 900));
+              lastGeminiErr = new Error(msg);
+              continue;
+            }
+
+            if ((response.status === 404 || response.status === 503 || response.status === 429) && !isGeminiModel) {
+              lastGeminiErr = new Error(msg);
+              continue;
+            }
+
+            throw new HttpError(502, `Error desde Google AI (${modelRow.name}): ${msg}`);
+          }
+
+          const data = await response.json();
+          const parts = data?.candidates?.[0]?.content?.parts || [];
+          const replyText =
+            parts
+              .filter((p) => !p?.thought)
+              .map((p) => p?.text || '')
+              .join('')
+              .trim() ||
+            'Respuesta recibida desde Google AI (Gemini) sin contenido de texto.';
+
+          const hasUsageMeta = Boolean(data?.usageMetadata?.promptTokenCount);
+          const inputTokens =
+            Number(data?.usageMetadata?.promptTokenCount) ||
+            contextInfo?.estimatedInputTokens ||
+            estimateTokensFromText(promptText) + 24;
+          const cachedTokens = Number(data?.usageMetadata?.cachedContentTokenCount) || 0;
+          const visibleOutputTokens =
+            Number(data?.usageMetadata?.candidatesTokenCount) ||
+            estimateTokensFromText(replyText);
+          const reasoningTokens = Number(data?.usageMetadata?.thoughtsTokenCount) || 0;
+          // En Google usageMetadata, thoughtsTokenCount viene separado de candidatesTokenCount;
+          // los sumamos en outputTokens para que CostEngineService los liquide sin omitir el razonamiento
+          const outputTokens = visibleOutputTokens + reasoningTokens;
+          const latencyMs = Math.max(100, Date.now() - startMs);
+
+          return {
+            reply: replyText,
+            inputTokens,
+            cachedTokens,
+            cacheWriteTokens: 0,
+            outputTokens,
+            reasoningTokens,
+            isEstimatedUsage: !hasUsageMeta,
+            latencyMs,
+            liveProvider: true,
+            remoteModelId: data?.modelVersion || remoteModelId,
+          };
+        } catch (err) {
+          if (err instanceof HttpError) throw err;
+          lastGeminiErr = err;
+        }
+      }
+
+      if (lastGeminiErr) {
+        throw new HttpError(
+          502,
+          `No se pudo completar la consulta en Google AI (Gemini): ${lastGeminiErr.message}`
+        );
+      }
+    }
+
+    // 3. Modo Piloto / Simulación realista con cálculo fiel del historial y Context Caching
     const reply = generateFallbackResponse(promptText, modelRow, domain);
+    const baseTurnInput = contextInfo?.estimatedInputTokens
+      ? contextInfo.estimatedInputTokens
+      : Math.max(48, estimateTokensFromText(promptText) + Math.round(complexity * 240));
+
+    // Si hay turnos previos en la conversación, simulamos el 85% de Cache Hit sobre el prefijo repetido
+    const cachedTokens =
+      contextInfo && contextInfo.turnCount > 1 && contextInfo.prefixHistoryTokens > 64
+        ? Math.round(contextInfo.prefixHistoryTokens * 0.85)
+        : 0;
+
+    const outputTokens = Math.max(
+      96,
+      estimateTokensFromText(reply) + Math.round(complexity * 320)
+    );
+    const reasoningTokens =
+      modelRow.slug === 'deepseek-r1' ? Math.round(outputTokens * 0.35) : 0;
+    const latencyMs = Math.round(modelRow.latency_sec * 1000 + (Math.random() * 180 - 90));
 
     return {
       reply,
-      inputTokens,
+      inputTokens: baseTurnInput,
+      cachedTokens,
+      cacheWriteTokens: 0,
       outputTokens,
+      reasoningTokens,
+      isEstimatedUsage: false,
       latencyMs,
       liveProvider: false,
-      remoteModelId: modelRow.slug,
+      remoteModelId: isKimiModel ? 'kimi-k2.6' : modelRow.slug,
     };
   },
 };

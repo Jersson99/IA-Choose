@@ -54,7 +54,9 @@ function requireApiKeyOrAuth(req, _res, next) {
 
 // Listar modelos disponibles en el Gateway de IA CHOOSE (estándar OpenAI /v1/models)
 router.get('/v1/models', requireApiKeyOrAuth, (_req, res) => {
-  const models = db.prepare('SELECT * FROM ai_models_benchmarks ORDER BY cost_cop ASC').all();
+  const models = db
+    .prepare('SELECT * FROM ai_models_benchmarks WHERE is_active = 1 ORDER BY cost_cop ASC')
+    .all();
   res.json({
     object: 'list',
     data: [
@@ -104,6 +106,7 @@ router.post('/v1/chat/completions', requireApiKeyOrAuth, async (req, res, next) 
 
     const result = await dashboardService.executeTask(req.userId, promptText, requestedModel, {
       messages: messages.length > 0 ? messages : null,
+      maxTokens: req.body?.max_tokens || req.body?.maxTokens,
       apiKeyId: req.apiKeyId,
     });
 
@@ -112,6 +115,7 @@ router.post('/v1/chat/completions', requireApiKeyOrAuth, async (req, res, next) 
       object: 'chat.completion',
       created: Math.floor(Date.now() / 1000),
       model: result.modelSlug,
+      remote_model_id: result.remoteModelId,
       model_name: result.model,
       provider: result.provider,
       choices: [
@@ -128,11 +132,23 @@ router.post('/v1/chat/completions', requireApiKeyOrAuth, async (req, res, next) 
         prompt_tokens: result.tokens.inputTokens,
         completion_tokens: result.tokens.outputTokens,
         total_tokens: result.tokens.totalTokens,
+        prompt_tokens_details: {
+          cached_tokens: result.tokens.cachedTokens || 0,
+          cache_write_tokens: result.tokens.cacheWriteTokens || 0,
+          uncached_tokens: result.tokens.inputUncachedTokens || result.tokens.inputTokens,
+        },
+        completion_tokens_details: {
+          reasoning_tokens: result.tokens.reasoningTokens || 0,
+        },
       },
       ia_choose_billing: {
         reference: result.reference,
+        reservation_id: result.reservationId,
         charged_cop: result.costCop,
         charged_formatted: result.cost,
+        cache_savings_cop: result.tokens.cacheSavingsCop || 0,
+        provider_cost_usd: result.costBreakdown?.providerCostUsd,
+        provider_cost_cop: result.costBreakdown?.providerCostCop,
         remaining_balance_cop: result.remainingBalanceCop,
         live_provider_connected: result.liveProvider,
         routed_domain: result.recommendation?.analysis?.domainLabel,

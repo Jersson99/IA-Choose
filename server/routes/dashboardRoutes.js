@@ -19,7 +19,11 @@ router.post('/dashboard/execute-task', async (req, res, next) => {
     const result = await dashboardService.executeTask(
       req.userId,
       req.body?.prompt,
-      req.body?.modelName
+      req.body?.modelName,
+      {
+        messages: Array.isArray(req.body?.messages) ? req.body.messages : null,
+        maxTokens: req.body?.maxTokens,
+      }
     );
     res.json(result);
   } catch (err) {

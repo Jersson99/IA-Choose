@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { db } from '../db.js';
 import { HttpError } from '../errors.js';
+import { costEngineService } from './costEngineService.js';
 import { llmProviderService } from './llmProviderService.js';
 import { routerService } from './routerService.js';
 
@@ -11,18 +12,9 @@ function ensureWallet(userId) {
     const now = new Date().toISOString();
     db.prepare(`
       INSERT INTO user_wallets (user_id, balance_cop, default_routing_mode, monthly_budget_cop, low_balance_alert_cop, updated_at)
-      VALUES (?, 15000, 'balanced', 50000, 3000, ?)
+      VALUES (?, 0, 'balanced', 50000, 3000, ?)
     `).run(userId, now);
 
-    const existingTx = db
-      .prepare('SELECT COUNT(*) as total FROM billing_transactions WHERE user_id = ?')
-      .get(userId);
-    if (existingTx.total === 0) {
-      db.prepare(`
-        INSERT INTO billing_transactions (user_id, reference, type, method, amount_cop, description, status, is_demo, created_at)
-        VALUES (?, ?, 'topup', 'Crédito Inicial Piloto', 15000, 'Bono de bienvenida IA CHOOSE (Piloto COP)', 'completed', 0, ?)
-      `).run(userId, `BONO-${userId}01`, now);
-    }
     wallet = db.prepare('SELECT * FROM user_wallets WHERE user_id = ?').get(userId);
   }
   return wallet;
@@ -91,6 +83,7 @@ export const dashboardService = {
     const user = db.prepare('SELECT id, name, email, created_at FROM users WHERE id = ?').get(userId);
     if (!user) throw new HttpError(401, 'Sesión inválida');
 
+    costEngineService.cleanupExpiredReservations(userId);
     const wallet = ensureWallet(userId);
     const logs = db
       .prepare('SELECT * FROM usage_logs WHERE user_id = ? ORDER BY created_at DESC')
@@ -103,7 +96,15 @@ export const dashboardService = {
         'SELECT id, name, key_prefix, status, last_used_at, created_at FROM user_api_keys WHERE user_id = ? ORDER BY created_at DESC'
       )
       .all(userId);
-    const models = db.prepare('SELECT * FROM ai_models_benchmarks ORDER BY cost_cop ASC').all();
+    const models = db
+      .prepare('SELECT * FROM ai_models_benchmarks WHERE is_active = 1 ORDER BY cost_cop ASC')
+      .all();
+    const pricingRates = db
+      .prepare('SELECT * FROM model_pricing_rates WHERE is_current = 1')
+      .all();
+    const recentCostAudits = db
+      .prepare('SELECT * FROM request_cost_audit WHERE user_id = ? ORDER BY created_at DESC LIMIT 25')
+      .all(userId);
 
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
@@ -114,7 +115,9 @@ export const dashboardService = {
     let weekSpendCop = 0;
     let monthSpendCop = 0;
     let totalSpendCop = 0;
+    let totalProviderCostCop = 0;
     let inputTokens = 0;
+    let cachedTokens = 0;
     let outputTokens = 0;
     let hasDemoData = false;
 
@@ -123,7 +126,9 @@ export const dashboardService = {
       if (log.status === 'error') continue;
       const cost = Number(log.cost_cop) || 0;
       totalSpendCop += cost;
+      totalProviderCostCop += Number(log.provider_cost_cop) || 0;
       inputTokens += Number(log.input_tokens) || 0;
+      cachedTokens += Number(log.cached_tokens) || 0;
       outputTokens += Number(log.output_tokens) || 0;
 
       const dateStr = String(log.created_at).slice(0, 10);
@@ -145,23 +150,31 @@ export const dashboardService = {
       }
     }
 
+    const reservedCop = Number(wallet.reserved_cop) || 0;
+    const availableBalanceCop = Math.max(0, Number(wallet.balance_cop) - reservedCop);
+
     return {
       user,
       wallet: {
         balanceCop: wallet.balance_cop,
+        reservedCop,
+        availableBalanceCop,
         defaultRoutingMode: wallet.default_routing_mode,
         monthlyBudgetCop: wallet.monthly_budget_cop,
         lowBalanceAlertCop: wallet.low_balance_alert_cop,
       },
       kpis: {
         balanceCop: wallet.balance_cop,
+        availableBalanceCop,
         todaySpendCop,
         weekSpendCop,
         monthSpendCop,
         totalSpendCop,
+        totalProviderCostCop: Math.round(totalProviderCostCop * 100) / 100,
         totalTopupCop,
         totalRequests,
         inputTokens,
+        cachedTokens,
         outputTokens,
         totalTokens,
         avgCostPerRequestCop,
@@ -176,6 +189,9 @@ export const dashboardService = {
         modelId: config.providers.moonshot.modelId,
         baseUrl: config.providers.moonshot.baseUrl,
       },
+      fxSettings: costEngineService.getFxSettings(),
+      pricingRates,
+      recentCostAudits,
       logs,
       transactions,
       apiKeys,
@@ -196,10 +212,10 @@ export const dashboardService = {
     const cleanPrompt = String(promptText || '').trim();
     if (!cleanPrompt) throw new HttpError(400, 'Escribe primero tu tarea para procesarla');
 
-    const wallet = ensureWallet(userId);
+    ensureWallet(userId);
     const rec = routerService.recommend(cleanPrompt);
 
-    // Si el usuario o cliente API especificó un modelo (y no pidió 'auto'), usamos ese modelo
+    // 1. Identificar el modelo objetivo (explícito o recomendado por el enrutador)
     let modelRow = null;
     if (requestedModelName && requestedModelName !== 'auto') {
       modelRow = db
@@ -208,80 +224,124 @@ export const dashboardService = {
     }
     if (!modelRow) {
       modelRow =
-        db.prepare('SELECT * FROM ai_models_benchmarks WHERE name = ?').get(rec.model) ||
-        db.prepare('SELECT * FROM ai_models_benchmarks ORDER BY cost_cop ASC LIMIT 1').get();
+        db.prepare('SELECT * FROM ai_models_benchmarks WHERE name = ? AND is_active = 1').get(rec.model) ||
+        db.prepare('SELECT * FROM ai_models_benchmarks WHERE is_active = 1 ORDER BY cost_cop ASC LIMIT 1').get();
     }
 
-    // Verificar que el saldo disponible cubra al menos la tarifa base del modelo antes de llamar al proveedor
-    if (wallet.balance_cop < modelRow.cost_cop) {
-      throw new HttpError(
-        402,
-        `Saldo insuficiente ($${wallet.balance_cop} COP). Recarga tu cuenta con Wompi en la sección Transacciones y saldo.`
-      );
-    }
-
-    const complexityFactor = rec.analysis?.complexity || 0.35;
-    const providerResult = await llmProviderService.generateCompletion({
+    // 2. Estimación Pre-Vuelo y preparación del contexto de conversación
+    const preFlight = costEngineService.estimatePreFlight({
       modelRow,
       messages: options.messages || null,
       promptText: cleanPrompt,
-      domain: rec.analysis?.domain,
-      complexity: complexityFactor,
+      requestedMaxOutputTokens: options.maxTokens,
     });
 
-    const { inputTokens, outputTokens, latencyMs, reply, liveProvider } = providerResult;
+    // 3. Bloqueo atómico de saldo (Reserva Pre-Vuelo) para impedir condiciones de carrera
+    const reservationId = costEngineService.reserveBalance({
+      userId,
+      modelSlug: modelRow.slug,
+      estimatedInputTokens: preFlight.contextInfo.estimatedInputTokens,
+      maxOutputTokens: preFlight.maxOutputTokens,
+      reservedAmountCop: preFlight.reservedAmountCop,
+    });
 
-    const computedCost = Math.max(
-      modelRow.cost_cop,
-      Math.round(
-        (inputTokens / 1000) * modelRow.input_cost_1k_cop +
-          (outputTokens / 1000) * modelRow.output_cost_1k_cop
-      )
-    );
-
-    if (wallet.balance_cop < computedCost) {
-      throw new HttpError(
-        402,
-        `Saldo insuficiente ($${wallet.balance_cop} COP) para cubrir el consumo de ${inputTokens + outputTokens} tokens ($${computedCost} COP). Recarga con Wompi.`
-      );
+    // 4. Invocación al proveedor externo; si falla la red o la API, liberamos la reserva sin cobrar
+    let providerResult;
+    try {
+      const complexityFactor = rec.analysis?.complexity || 0.35;
+      providerResult = await llmProviderService.generateCompletion({
+        modelRow,
+        messages: preFlight.contextInfo.normalizedMessages,
+        promptText: cleanPrompt,
+        domain: rec.analysis?.domain,
+        complexity: complexityFactor,
+        maxOutputTokens: preFlight.maxOutputTokens,
+        contextInfo: preFlight.contextInfo,
+      });
+    } catch (err) {
+      costEngineService.releaseReservation(reservationId);
+      throw err;
     }
 
+    // 5. Cálculo del costo definitivo y margen usando los datos reales de consumo
+    const settlement = costEngineService.calculateSettlement({
+      modelRow,
+      usage: providerResult,
+      remoteModelId: providerResult.remoteModelId,
+      toolCallsCount: options.toolCallsCount || 0,
+    });
+
+    const { latencyMs, reply, liveProvider } = providerResult;
     const now = new Date().toISOString();
     const summary = cleanPrompt.length > 90 ? `${cleanPrompt.slice(0, 87)}...` : cleanPrompt;
     const ref = `API-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
     const methodLabel = options.apiKeyId ? 'Gateway API (iac_live)' : 'Consumo API';
 
+    let finalChargedCop = settlement.userChargedCop;
+
+    // 6. Liquidación Atómica (Settle Reservation + Descuento Real + Auditoría Financiera)
     db.exec('BEGIN IMMEDIATE');
     try {
-      const freshWallet = db
-        .prepare('SELECT balance_cop FROM user_wallets WHERE user_id = ?')
-        .get(userId);
-      if (!freshWallet || freshWallet.balance_cop < computedCost) {
-        throw new HttpError(402, 'Saldo insuficiente en tu billetera IA CHOOSE');
+      const rsv = db
+        .prepare('SELECT * FROM wallet_reservations WHERE id = ?')
+        .get(reservationId);
+      if (!rsv || rsv.status !== 'reserved') {
+        throw new HttpError(409, 'La reserva de esta solicitud ya fue procesada');
       }
 
-      db.prepare(
-        'UPDATE user_wallets SET balance_cop = balance_cop - ?, updated_at = ? WHERE user_id = ?'
-      ).run(computedCost, now, userId);
+      const freshWallet = db
+        .prepare('SELECT balance_cop, reserved_cop FROM user_wallets WHERE user_id = ?')
+        .get(userId);
+      if (!freshWallet) {
+        throw new HttpError(404, 'Billetera no encontrada al liquidar consumo');
+      }
 
-      db.prepare(`
-        INSERT INTO usage_logs (
-          user_id, prompt_summary, model_slug, model_name, provider, domain,
-          input_tokens, output_tokens, cost_cop, latency_ms, status, is_demo, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 0, ?)
-      `).run(
-        userId,
-        summary,
-        modelRow.slug,
-        modelRow.name,
-        modelRow.provider,
-        rec.analysis.domainLabel,
-        inputTokens,
-        outputTokens,
-        computedCost,
-        latencyMs,
-        now
+      // Garantía estricta contra saldos negativos
+      finalChargedCop = Math.min(Number(freshWallet.balance_cop), settlement.userChargedCop);
+      const nextBalanceCop = Math.max(0, Number(freshWallet.balance_cop) - finalChargedCop);
+      const nextReservedCop = Math.max(
+        0,
+        (Number(freshWallet.reserved_cop) || 0) - Number(rsv.reserved_amount_cop)
       );
+
+      db.prepare(
+        'UPDATE user_wallets SET balance_cop = ?, reserved_cop = ?, updated_at = ? WHERE user_id = ?'
+      ).run(nextBalanceCop, nextReservedCop, now, userId);
+
+      db.prepare(
+        "UPDATE wallet_reservations SET status = 'settled', settled_at = ? WHERE id = ?"
+      ).run(now, reservationId);
+
+      const logInsert = db
+        .prepare(`
+          INSERT INTO usage_logs (
+            user_id, prompt_summary, model_slug, model_name, provider, domain,
+            input_tokens, cached_tokens, output_tokens, cost_cop, provider_cost_cop,
+            latency_ms, status, is_demo, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 0, ?)
+        `)
+        .run(
+          userId,
+          summary,
+          modelRow.slug,
+          modelRow.name,
+          modelRow.provider,
+          rec.analysis.domainLabel,
+          settlement.promptTokensTotal,
+          settlement.inputCachedTokens,
+          settlement.outputTokensTotal,
+          finalChargedCop,
+          settlement.providerCostCop,
+          latencyMs,
+          now
+        );
+
+      const usageLogId = Number(logInsert.lastInsertRowid);
+
+      const cacheNote =
+        settlement.inputCachedTokens > 0
+          ? ` · ${settlement.inputCachedTokens} tokens en caché`
+          : '';
 
       db.prepare(`
         INSERT INTO billing_transactions (
@@ -291,9 +351,47 @@ export const dashboardService = {
         userId,
         ref,
         methodLabel,
-        -computedCost,
-        `Consulta ${modelRow.name} (${inputTokens + outputTokens} tokens)`,
+        -finalChargedCop,
+        `Consulta ${modelRow.name} (${settlement.totalTokens} tokens${cacheNote})`,
         now,
+        now
+      );
+
+      db.prepare(`
+        INSERT INTO request_cost_audit (
+          usage_log_id, reservation_id, user_id, provider_slug, model_slug, remote_model_id,
+          pricing_rate_id, prompt_tokens_total, input_uncached_tokens, input_cached_tokens,
+          cache_write_tokens, output_tokens_total, reasoning_tokens, tool_calls_count,
+          is_estimated_usage, applied_fx_rate_cop, provider_cost_usd, provider_cost_cop,
+          operational_overhead_cop, total_internal_cost_cop, user_charged_cop,
+          net_profit_cop, net_margin_pct, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        usageLogId,
+        reservationId,
+        userId,
+        settlement.providerSlug,
+        settlement.modelSlug,
+        settlement.remoteModelId,
+        settlement.pricingRateId,
+        settlement.promptTokensTotal,
+        settlement.inputUncachedTokens,
+        settlement.inputCachedTokens,
+        settlement.cacheWriteTokens,
+        settlement.outputTokensTotal,
+        settlement.reasoningTokens,
+        settlement.toolCallsCount,
+        settlement.isEstimatedUsage ? 1 : 0,
+        settlement.appliedFxRateCop,
+        settlement.providerCostUsd,
+        settlement.providerCostCop,
+        settlement.operationalOverheadCop,
+        settlement.totalInternalCostCop,
+        finalChargedCop,
+        Number((finalChargedCop - settlement.totalInternalCostCop).toFixed(2)),
+        finalChargedCop > 0
+          ? Math.round(((finalChargedCop - settlement.totalInternalCostCop) / finalChargedCop) * 1000) / 10
+          : 0,
         now
       );
 
@@ -315,26 +413,52 @@ export const dashboardService = {
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');
+      costEngineService.releaseReservation(reservationId);
       throw err;
     }
 
     const updatedDashboard = this.getOverviewData(userId);
+    const tokenPayload = {
+      inputTokens: settlement.promptTokensTotal,
+      inputUncachedTokens: settlement.inputUncachedTokens,
+      cachedTokens: settlement.inputCachedTokens,
+      cacheWriteTokens: settlement.cacheWriteTokens,
+      outputTokens: settlement.outputTokensTotal,
+      reasoningTokens: settlement.reasoningTokens,
+      totalTokens: settlement.totalTokens,
+      cacheSavingsCop: settlement.cacheSavingsCop,
+    };
 
     return {
       reference: ref,
+      reservationId,
       liveProvider,
       recommendation: {
         ...rec,
-        cost: `$${computedCost} COP`,
-        tokens: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens },
+        cost: `$${finalChargedCop} COP`,
+        tokens: tokenPayload,
       },
       model: modelRow.name,
       modelSlug: modelRow.slug,
+      remoteModelId: settlement.remoteModelId,
       provider: modelRow.provider,
-      cost: `$${computedCost} COP`,
-      costCop: computedCost,
+      cost: `$${finalChargedCop} COP`,
+      costCop: finalChargedCop,
       remainingBalanceCop: updatedDashboard.wallet.balanceCop,
-      tokens: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens },
+      tokens: tokenPayload,
+      costBreakdown: {
+        providerCostUsd: settlement.providerCostUsd,
+        providerCostCop: settlement.providerCostCop,
+        operationalOverheadCop: settlement.operationalOverheadCop,
+        totalInternalCostCop: settlement.totalInternalCostCop,
+        userChargedCop: finalChargedCop,
+        cacheSavingsCop: settlement.cacheSavingsCop,
+        netProfitCop: Number((finalChargedCop - settlement.totalInternalCostCop).toFixed(2)),
+        netMarginPct: settlement.netMarginPct,
+        appliedFxRateCop: settlement.appliedFxRateCop,
+        contextCompacted: preFlight.contextInfo.compacted,
+        turnCount: preFlight.contextInfo.turnCount,
+      },
       latencyMs,
       reply,
       dashboard: updatedDashboard,

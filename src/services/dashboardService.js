@@ -11,8 +11,11 @@ export const dashboardApi = {
   recommendTask: (prompt) =>
     apiRequest('/dashboard/recommend-task', withToken({ method: 'POST', body: { prompt } })),
 
-  executeTask: (prompt, modelName = null) =>
-    apiRequest('/dashboard/execute-task', withToken({ method: 'POST', body: { prompt, modelName } })),
+  executeTask: (prompt, modelName = null, messages = null) =>
+    apiRequest(
+      '/dashboard/execute-task',
+      withToken({ method: 'POST', body: { prompt, modelName, messages } })
+    ),
 
   topUp: (amountCop, method) =>
     apiRequest('/dashboard/topup', withToken({ method: 'POST', body: { amountCop, method } })),
@@ -42,7 +45,7 @@ export const dashboardApi = {
       method: 'POST',
       token: apiKey && apiKey.trim() ? apiKey.trim() : tokenStorage.get(),
       body: {
-        model: model || 'kimi-k2',
+        model: model || 'gemini-4-hydrogen',
         messages: [{ role: 'user', content: prompt }],
       },
     }),

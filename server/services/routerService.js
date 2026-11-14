@@ -33,7 +33,9 @@ export const routerService = {
   recommend(promptText) {
     const profile = predictTaskProfile(promptText);
     const meta = DOMAIN_META[profile.domain] || DOMAIN_META.general_qa;
-    const allModels = db.prepare('SELECT * FROM ai_models_benchmarks ORDER BY cost_cop ASC').all();
+    const allModels = db
+      .prepare('SELECT * FROM ai_models_benchmarks WHERE is_active = 1 ORDER BY cost_cop ASC')
+      .all();
 
     // Umbral mínimo de benchmark exigido y política por nivel de complejidad:
     // 1. Básica (<= 0.35): umbral 80.0% -> gana el más económico que cumpla (Gemini Flash $9 COP)
@@ -117,6 +119,8 @@ export const routerService = {
   },
 
   listBenchmarks() {
-    return db.prepare('SELECT * FROM ai_models_benchmarks ORDER BY cost_cop ASC').all();
+    return db
+      .prepare('SELECT * FROM ai_models_benchmarks WHERE is_active = 1 ORDER BY cost_cop ASC')
+      .all();
   },
 };
