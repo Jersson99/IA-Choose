@@ -82,16 +82,16 @@ export const config = {
       return getEnv('WOMPI_PAYMENT_LINK_URL', 'https://checkout.wompi.co/l/oZjvx6');
     },
     get publicKey() {
-      return getEnv('WOMPI_PUBLIC_KEY');
+      return getEnv('WOMPI_PUBLIC_KEY', 'pub_prod_FQBuduAuyEXu7MPKxt1tce9trPlh7pwJ');
     },
     get privateKey() {
-      return getEnv('WOMPI_PRIVATE_KEY');
+      return getEnv('WOMPI_PRIVATE_KEY', 'prv_prod_TRZ0SOpHUgy4VkGmaurds1R8OyNKUlWp');
     },
     get integritySecret() {
-      return getEnv('WOMPI_INTEGRITY_SECRET');
+      return getEnv('WOMPI_INTEGRITY_SECRET', 'prod_integrity_PpWoeMdhWSk3XNep9aU42iImeyq4crOb');
     },
     get eventsSecret() {
-      return getEnv('WOMPI_EVENTS_SECRET');
+      return getEnv('WOMPI_EVENTS_SECRET', 'prod_events_gcEVnetytNPtxTRm8nY0vkxQUnNhwrIY');
     },
     get env() {
       if (this.publicKey.startsWith('pub_prod_') || this.privateKey.startsWith('prv_prod_')) {
@@ -100,7 +100,7 @@ export const config = {
       if (this.publicKey.startsWith('pub_test_') || this.privateKey.startsWith('prv_test_')) {
         return 'sandbox';
       }
-      return getEnv('WOMPI_ENV', 'sandbox').toLowerCase();
+      return getEnv('WOMPI_ENV', 'production').toLowerCase();
     },
     get apiBaseUrl() {
       return this.env === 'production'

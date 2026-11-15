@@ -755,106 +755,24 @@ export default function DashboardPage({ user, onLogout, robot }) {
   };
 
   const openWompiCheckoutForSession = (session) => {
-    const origin = window.location.origin || '';
-    const isPublicHttpsOrigin =
-      origin.startsWith('https://') &&
-      !origin.includes('localhost') &&
-      !origin.includes('127.0.0.1');
-
-    if (session.mode === 'wompi_widget' && typeof window.WidgetCheckout === 'function') {
-      const widgetConfig = {
-        currency: session.currency,
-        amountInCents: session.amountInCents,
-        reference: session.reference,
-        publicKey: session.publicKey,
-        signature: { integrity: session.signature.integrity },
-        customerData: {
-          email: session.customerData?.email,
-          fullName: session.customerData?.fullName,
-        },
-      };
-      // El firewall CloudFront de Wompi devuelve 403 si redirectUrl contiene http://localhost
-      if (isPublicHttpsOrigin) {
-        widgetConfig.redirectUrl = origin;
-      }
-      const checkout = new window.WidgetCheckout(widgetConfig);
-
-      robot.say(
-        'peek',
-        `Completa tu recarga de ${formatCop(session.amountCop)} en la ventana de Wompi...`,
-        3800
+    // Redirigir directamente al Web Checkout oficial de Wompi (https://checkout.wompi.co/p/?...)
+    // En modo página completa tiene scroll nativo 100% responsive en escritorio y móvil,
+    // sin quedar atrapado en un iframe estático, y al terminar regresa con ?id=<TRANSACTION_ID>
+    const targetUrl =
+      session?.webCheckoutUrl || session?.checkoutUrl || 'https://checkout.wompi.co/l/oZjvx6';
+    try {
+      sessionStorage.setItem(
+        'ia_choose_wompi_last_topup',
+        JSON.stringify({
+          amountCop: session.amountCop,
+          method: session.method,
+          reference: session.reference,
+        })
       );
-
-      checkout.open(async (result) => {
-        const transaction = result?.transaction;
-        if (!transaction?.id) return;
-        try {
-          const verified = await dashboardApi.verifyWompiPayment({
-            transactionId: transaction.id,
-            reference: session.reference,
-          });
-          if (verified?.dashboard) setData(verified.dashboard);
-
-          if (verified?.outcome?.status === 'completed') {
-            showToast(
-              '¡Recarga Wompi aprobada!',
-              `Se abonaron ${formatCop(verified.outcome.amountCop)} vía ${session.method} a tu billetera.`
-            );
-            robot.say(
-              'celebrate',
-              `¡Pago aprobado! +${formatCop(verified.outcome.amountCop)} disponibles`,
-              3500
-            );
-          } else if (verified?.outcome?.status === 'declined') {
-            showToast(
-              'Transacción declinada',
-              'El pago no fue aprobado por la entidad bancaria o Nequi.'
-            );
-            robot.say('peek', 'El pago fue declinado. Tu saldo no sufrió cargos.', 3200);
-          }
-        } catch (verifyErr) {
-          showToast('Error al verificar con Wompi', verifyErr.message);
-        }
-      });
-
-      // Habilitar scroll nativo y responsive en el iframe/modal inyectado por widget.js de Wompi
-      const unlockWompiScroll = () => {
-        document.body.classList.remove('no-scroll');
-        const iframe = document.querySelector('.waybox-iframe, iframe[src*="wompi"]');
-        if (iframe) {
-          iframe.setAttribute('scrolling', 'yes');
-          iframe.style.overflowY = 'auto';
-          iframe.style.minHeight = window.innerWidth < 780 ? '860px' : '780px';
-        }
-        const modal = document.querySelector('.waybox-modal');
-        if (modal) {
-          modal.style.overflowY = 'auto';
-          modal.style.minHeight = window.innerWidth < 780 ? '88dvh' : '740px';
-        }
-        const backdrop = document.querySelector('.waybox-backdrop');
-        if (backdrop) {
-          backdrop.style.overflowY = 'auto';
-        }
-      };
-      setTimeout(unlockWompiScroll, 80);
-      setTimeout(unlockWompiScroll, 350);
-      setTimeout(unlockWompiScroll, 900);
-    } else {
-      const targetUrl = session?.checkoutUrl || 'https://checkout.wompi.co/l/oZjvx6';
-      try {
-        sessionStorage.setItem(
-          'ia_choose_wompi_last_topup',
-          JSON.stringify({
-            amountCop: session.amountCop,
-            method: session.method,
-            reference: session.reference,
-          })
-        );
-      } catch {
-        // Ignorar errores de sessionStorage
-      }
-      window.location.href = targetUrl;
+    } catch {
+      // Ignorar errores de sessionStorage
     }
+    window.location.href = targetUrl;
   };
 
   const handleTopupSubmit = async (e) => {
