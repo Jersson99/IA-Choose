@@ -1887,7 +1887,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
                           >
                             {models.map((m) => (
                               <option key={m.slug} value={m.name}>
-                                {m.name} · ${m.cost_cop} COP ({m.provider})
+                                {m.name} · desde ${m.cost_cop} COP ({m.provider})
                               </option>
                             ))}
                           </select>
@@ -1897,9 +1897,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
                           className="model-chat-send-btn"
                           disabled={sendingChat || !chatInput.trim()}
                         >
-                          {sendingChat
-                            ? 'Enviando...'
-                            : `Enviar (${currentModelObj?.cost_cop || 9} COP)`}
+                          {sendingChat ? 'Enviando...' : 'Enviar'}
                         </button>
                       </div>
                     </form>
