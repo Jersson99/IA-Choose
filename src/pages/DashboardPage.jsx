@@ -755,19 +755,29 @@ export default function DashboardPage({ user, onLogout, robot }) {
   };
 
   const openWompiCheckoutForSession = (session) => {
+    const origin = window.location.origin || '';
+    const isPublicHttpsOrigin =
+      origin.startsWith('https://') &&
+      !origin.includes('localhost') &&
+      !origin.includes('127.0.0.1');
+
     if (session.mode === 'wompi_widget' && typeof window.WidgetCheckout === 'function') {
-      const checkout = new window.WidgetCheckout({
+      const widgetConfig = {
         currency: session.currency,
         amountInCents: session.amountInCents,
         reference: session.reference,
         publicKey: session.publicKey,
         signature: { integrity: session.signature.integrity },
-        redirectUrl: window.location.origin,
         customerData: {
           email: session.customerData?.email,
           fullName: session.customerData?.fullName,
         },
-      });
+      };
+      // El firewall CloudFront de Wompi devuelve 403 si redirectUrl contiene http://localhost
+      if (isPublicHttpsOrigin) {
+        widgetConfig.redirectUrl = origin;
+      }
+      const checkout = new window.WidgetCheckout(widgetConfig);
 
       robot.say(
         'peek',
@@ -806,6 +816,29 @@ export default function DashboardPage({ user, onLogout, robot }) {
           showToast('Error al verificar con Wompi', verifyErr.message);
         }
       });
+
+      // Habilitar scroll nativo y responsive en el iframe/modal inyectado por widget.js de Wompi
+      const unlockWompiScroll = () => {
+        document.body.classList.remove('no-scroll');
+        const iframe = document.querySelector('.waybox-iframe, iframe[src*="wompi"]');
+        if (iframe) {
+          iframe.setAttribute('scrolling', 'yes');
+          iframe.style.overflowY = 'auto';
+          iframe.style.minHeight = window.innerWidth < 780 ? '860px' : '780px';
+        }
+        const modal = document.querySelector('.waybox-modal');
+        if (modal) {
+          modal.style.overflowY = 'auto';
+          modal.style.minHeight = window.innerWidth < 780 ? '88dvh' : '740px';
+        }
+        const backdrop = document.querySelector('.waybox-backdrop');
+        if (backdrop) {
+          backdrop.style.overflowY = 'auto';
+        }
+      };
+      setTimeout(unlockWompiScroll, 80);
+      setTimeout(unlockWompiScroll, 350);
+      setTimeout(unlockWompiScroll, 900);
     } else {
       const targetUrl = session?.checkoutUrl || 'https://checkout.wompi.co/l/oZjvx6';
       try {

@@ -358,6 +358,13 @@ export const wompiService = {
 
     const customerEmail = user.email.includes('@') ? user.email : `${user.email}@iachoose.co`;
 
+    // CloudFront WAF de Wompi bloquea (403) cualquier URL que contenga localhost o 127.0.0.1 en redirect-url
+    const isPublicHttpsRedirect =
+      typeof redirectUrl === 'string' &&
+      redirectUrl.startsWith('https://') &&
+      !redirectUrl.includes('localhost') &&
+      !redirectUrl.includes('127.0.0.1');
+
     // Construcción de la URL oficial del Web Checkout de Wompi con monto y firma SHA-256
     const webCheckoutParams = new URLSearchParams({
       'public-key': publicKey,
@@ -368,7 +375,7 @@ export const wompiService = {
       'customer-data:email': customerEmail,
       'customer-data:full-name': user.name,
     });
-    if (redirectUrl) {
+    if (isPublicHttpsRedirect) {
       webCheckoutParams.set('redirect-url', redirectUrl);
     }
     const officialWebCheckoutUrl = `https://checkout.wompi.co/p/?${webCheckoutParams.toString()}`;
