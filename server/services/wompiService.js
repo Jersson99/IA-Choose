@@ -46,6 +46,119 @@ function getNestedValue(obj, dottedPath) {
 
 export const wompiService = {
   /**
+   * Sincroniza automáticamente las transacciones reales del usuario desde la API de Wompi.
+   * Esto garantiza que en Vercel (serverless /tmp) o en local tras cerrar sesión o redesplegar,
+   * cualquier recarga aprobada en Wompi quede siempre reflejada en el saldo e historial.
+   */
+  async syncUserTransactionsFromWompi(userId) {
+    if (!config.wompi.privateKey) return;
+    try {
+      const user = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(userId);
+      if (!user) return;
+
+      // Asegurar que la billetera inicial del usuario exista antes de sincronizar
+      dashboardService.getOverviewData(userId);
+
+      const now = new Date();
+      const fromDate = new Date(now.getTime() - 30 * 86400000).toISOString();
+      const url = `${config.wompi.apiBaseUrl}/transactions?from_date=${encodeURIComponent(
+        fromDate
+      )}&until_date=${encodeURIComponent(now.toISOString())}&page=1&page_size=30`;
+
+      const res = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${config.wompi.privateKey}`,
+        },
+        signal: AbortSignal.timeout(4500),
+      });
+
+      if (!res.ok) return;
+      const body = await res.json().catch(() => ({}));
+      const txs = Array.isArray(body?.data) ? body.data : [];
+      if (txs.length === 0) return;
+
+      const userEmailLower = String(user.email || '').trim().toLowerCase();
+
+      // Ordenar de más antigua a más reciente para mantener orden cronológico
+      const sorted = [...txs].reverse();
+
+      for (const wTx of sorted) {
+        if (!wTx?.id || !wTx?.reference) continue;
+        const txEmail = String(wTx.customer_email || '').trim().toLowerCase();
+        const refPrefix = `WMP-${userId}-`;
+
+        // Si el pago en Wompi trae customer_email, asociarlo estrictamente al usuario con ese correo
+        const emailOwner = txEmail
+          ? db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(txEmail)
+          : null;
+
+        const belongsToUser = emailOwner
+          ? Number(emailOwner.id) === Number(userId)
+          : String(wTx.reference).startsWith(refPrefix);
+
+        if (!belongsToUser) continue;
+
+        const amountCop = Math.round((Number(wTx.amount_in_cents) || 0) / 100);
+        if (amountCop <= 0) continue;
+
+        const existing = db
+          .prepare(
+            'SELECT * FROM billing_transactions WHERE reference = ? OR wompi_transaction_id = ?'
+          )
+          .get(String(wTx.reference), String(wTx.id));
+
+        const pType = String(wTx.payment_method_type || 'WOMPI').toUpperCase();
+        const displayMethod =
+          pType === 'NEQUI'
+            ? 'Wompi · Nequi'
+            : pType.includes('BANCOLOMBIA')
+            ? 'Wompi · Bancolombia'
+            : pType === 'PSE'
+            ? 'Wompi · PSE'
+            : `Wompi · ${pType}`;
+
+        const createdAt = wTx.created_at || new Date().toISOString();
+        const updatedAt = wTx.finalized_at || createdAt;
+
+        if (!existing) {
+          // Solo insertar en el historial si fue aprobada o si es reciente
+          if (wTx.status !== 'APPROVED') continue;
+          db.prepare(`
+            INSERT INTO billing_transactions (
+              user_id, reference, wompi_transaction_id, type, method, amount_cop,
+              description, status, is_demo, payment_method_type, created_at, updated_at
+            ) VALUES (?, ?, ?, 'topup', ?, ?, ?, 'pending', 0, ?, ?, ?)
+          `).run(
+            userId,
+            String(wTx.reference),
+            String(wTx.id),
+            displayMethod,
+            amountCop,
+            `Recarga billetera vía Wompi (${pType})`,
+            pType,
+            createdAt,
+            updatedAt
+          );
+        }
+
+        if (wTx.status === 'APPROVED' || existing) {
+          this.applyTransactionOutcome({
+            reference: String(wTx.reference),
+            wompiTransactionId: String(wTx.id),
+            wompiStatus: wTx.status,
+            paymentMethodType: pType,
+            amountInCents: wTx.amount_in_cents,
+            detailNote: `Wompi #${wTx.id}`,
+          });
+        }
+      }
+    } catch {
+      // No bloquear la carga del dashboard si Wompi tarda en responder
+    }
+  },
+
+  /**
    * Consulta en vivo las instituciones financieras de PSE desde la API oficial de Wompi
    */
   async listPseBanks() {

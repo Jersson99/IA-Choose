@@ -1,13 +1,19 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { dashboardService } from '../services/dashboardService.js';
+import { wompiService } from '../services/wompiService.js';
 
 const router = Router();
 
 router.use('/dashboard', requireAuth);
 
-router.get('/dashboard/summary', (req, res) => {
-  res.json(dashboardService.getOverviewData(req.userId));
+router.get('/dashboard/summary', async (req, res, next) => {
+  try {
+    await wompiService.syncUserTransactionsFromWompi(req.userId);
+    res.json(dashboardService.getOverviewData(req.userId));
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/dashboard/recommend-task', (req, res) => {
