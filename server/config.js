@@ -139,13 +139,13 @@ export const config = {
     },
     deepseek: {
       get apiKey() {
-        return getEnv('DEEPSEEK_API_KEY');
+        return getEnv('DEEPSEEK_API_KEY', 'sk-5be3e0bf57494d4db6949130fbdb77fb');
       },
       get baseUrl() {
         return getEnv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com/v1').replace(/\/+$/, '');
       },
       get modelId() {
-        return getEnv('DEEPSEEK_MODEL_ID', 'deepseek-reasoner');
+        return getEnv('DEEPSEEK_MODEL_ID', 'deepseek-flash');
       },
       get isConfigured() {
         return Boolean(this.apiKey);

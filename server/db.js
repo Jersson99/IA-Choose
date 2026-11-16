@@ -1037,10 +1037,10 @@ for (const gm of googleProSuite) {
   }
 }
 
-// Dejar activos únicamente los modelos oficiales de Google DeepMind y DeepSeek para esta fase de pruebas
+// Dejar habilitados únicamente los dos modelos oficiales de DeepSeek (DeepSeek V4.1 Flash y DeepSeek V4 Pro)
 db.exec(`
-  UPDATE ai_models_benchmarks SET is_active = 1 WHERE provider IN ('Google DeepMind', 'DeepSeek API');
-  UPDATE ai_models_benchmarks SET is_active = 0 WHERE provider NOT IN ('Google DeepMind', 'DeepSeek API');
+  UPDATE ai_models_benchmarks SET is_active = 1 WHERE slug IN ('deepseek-v4-flash', 'deepseek-v4-pro');
+  UPDATE ai_models_benchmarks SET is_active = 0 WHERE slug NOT IN ('deepseek-v4-flash', 'deepseek-v4-pro');
 `);
 
 // Garantizar que exista el usuario de prueba admin / 123

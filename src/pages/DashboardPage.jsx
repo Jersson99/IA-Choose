@@ -424,14 +424,14 @@ export default function DashboardPage({ user, onLogout, robot }) {
   const [txTypeFilter, setTxTypeFilter] = useState('all'); // 'all' | 'topup' | 'usage_debit'
   const [processingTopup, setProcessingTopup] = useState(false);
 
-  // Estados de la sección API Keys y Gateway Google AI (Gemini) / Moonshot Kimi
+  // Estados de la sección API Keys y Gateway DeepSeek
   const [newKeyName, setNewKeyName] = useState('');
   const [justCreatedSecret, setJustCreatedSecret] = useState(null);
   const [creatingKey, setCreatingKey] = useState(false);
   const [gatewayTestKey, setGatewayTestKey] = useState('');
-  const [gatewayTestModel, setGatewayTestModel] = useState('gemini-flash');
+  const [gatewayTestModel, setGatewayTestModel] = useState('deepseek-v4-flash');
   const [gatewayTestPrompt, setGatewayTestPrompt] = useState(
-    'Explica brevemente en 3 puntos cómo optimizar consultas SQL y cómo IA CHOOSE enruta modelos con Google AI (Gemini).'
+    'Explica brevemente en 3 puntos cómo optimizar consultas SQL y cómo IA CHOOSE enruta modelos entre DeepSeek V4.1 Flash y DeepSeek V4 Pro.'
   );
   const [testingGateway, setTestingGateway] = useState(false);
   const [gatewayTestResult, setGatewayTestResult] = useState(null);
@@ -603,7 +603,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
     setUseModalOpen(false);
 
     const initialPrompt = taskInput.trim();
-    if (initialPrompt && chatMessages.length === 0) {
+    if (initialPrompt) {
       const userMsgId = 'usr-' + Date.now();
       const userMsg = {
         id: userMsgId,
@@ -611,7 +611,10 @@ export default function DashboardPage({ user, onLogout, robot }) {
         text: initialPrompt,
         timestamp: new Date().toISOString(),
       };
+      // Iniciar un hilo limpio para esta nueva consulta desde el enrutador
       setChatMessages([userMsg]);
+      setTaskInput('');
+      setRecommendation(null);
       setSendingChat(true);
       robot.say('peek', `Consultando a ${targetModel}...`, 2500);
 
@@ -632,8 +635,8 @@ export default function DashboardPage({ user, onLogout, robot }) {
           costBreakdown: result.costBreakdown,
           timestamp: new Date().toISOString(),
         };
-        setChatMessages((prev) => [...prev, modelMsg]);
-        robot.say('celebrate', `Respuesta generada con ${result.model}`, 3200);
+        setChatMessages([userMsg, modelMsg]);
+        robot.say('celebrate', `Respuesta generada con ${result.model} (${result.cost})`, 3200);
       } catch (err) {
         showToast('Error al procesar consulta', err.message);
         robot.say('peek', err.message, 3400);
@@ -662,13 +665,21 @@ export default function DashboardPage({ user, onLogout, robot }) {
       timestamp: new Date().toISOString(),
     };
 
-    const historyPayload = [
-      ...chatMessages.map((m) => ({
-        role: m.sender === 'user' ? 'user' : 'assistant',
-        content: m.text,
-      })),
-      { role: 'user', content: prompt },
-    ];
+    // Si el usuario acaba de cambiar de modelo (ej. de Pro a Flash), iniciar el contexto limpio para ese modelo
+    // para que los miles de tokens de respuesta de Pro no encarezcan la consulta de Flash
+    const lastAssistantMsg = [...chatMessages].reverse().find((m) => m.sender === 'model');
+    const switchedModelInThread =
+      lastAssistantMsg && lastAssistantMsg.modelName && lastAssistantMsg.modelName !== selectedModel;
+
+    const historyPayload = switchedModelInThread
+      ? [{ role: 'user', content: prompt }]
+      : [
+          ...chatMessages.slice(-4).map((m) => ({
+            role: m.sender === 'user' ? 'user' : 'assistant',
+            content: m.text,
+          })),
+          { role: 'user', content: prompt },
+        ];
 
     setChatMessages((prev) => [...prev, userMsg]);
     setChatInput('');
@@ -718,6 +729,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
     setSelectedModel(null);
     setRecommendation(null);
     setTaskInput('');
+    setChatMessages([]);
     robot.say('wave', 'Enrutador listo para analizar una nueva tarea', 2400);
   };
 
@@ -1514,6 +1526,7 @@ export default function DashboardPage({ user, onLogout, robot }) {
              * ================================================================= */}
             {activeTab === 'ask' && selectedModel && (() => {
               const modelTurns = chatMessages.filter((m) => m.sender === 'model' && m.costBreakdown);
+              const lastModelTurn = modelTurns.length > 0 ? modelTurns[modelTurns.length - 1] : null;
               const threadSummary = modelTurns.reduce(
                 (acc, m) => {
                   const cb = m.costBreakdown || {};
@@ -1546,10 +1559,8 @@ export default function DashboardPage({ user, onLogout, robot }) {
                 }
               );
               const latestDbAudit = (data?.recentCostAudits || [])[0] || null;
-              const threadMarginPct =
-                threadSummary.chargedCop > 0
-                  ? Math.round((threadSummary.profitCop / threadSummary.chargedCop) * 1000) / 10
-                  : 0;
+              const lastCb = lastModelTurn?.costBreakdown || null;
+              const lastTk = lastModelTurn?.tokens || null;
 
               return (
                 <div className="dashboard-section-stack model-workspace-shell">
@@ -1602,46 +1613,51 @@ export default function DashboardPage({ user, onLogout, robot }) {
                         fontSize: '0.8rem',
                       }}
                     >
-                      {threadSummary.turns > 0 ? (
+                      {lastModelTurn && lastCb ? (
                         <>
                           <div>
                             <strong style={{ color: '#38bdf8' }}>
-                              📊 Auditoría en Vivo del Hilo ({threadSummary.turns}{' '}
-                              {threadSummary.turns === 1 ? 'turno' : 'turnos'})
+                              📊 Última Consulta Procesada ({lastModelTurn.modelName} ·{' '}
+                              {lastCb.remoteModelId})
                             </strong>
                             <div style={{ color: '#94a3b8', marginTop: '0.15rem' }}>
-                              Contexto enviado: <strong>{threadSummary.inputTokens} tok</strong> (
-                              {threadSummary.cachedTokens} caché) · Salida:{' '}
-                              <strong>{threadSummary.outputTokens} tok</strong> (
-                              {threadSummary.reasoningTokens} razonamiento)
+                              Contexto enviado: <strong>{lastTk?.inputTokens || 0} tok</strong> (
+                              {lastTk?.cachedTokens || 0} caché) · Salida:{' '}
+                              <strong>{lastTk?.outputTokens || 0} tok</strong> (
+                              {lastTk?.reasoningTokens || 0} razonamiento)
                             </div>
                           </div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
                             <span>
                               Costo Proveedor:{' '}
                               <strong>
-                                ${threadSummary.providerCop.toFixed(2)} COP
+                                ${Number(lastCb.providerCostCop || 0).toFixed(2)} COP
                               </strong>{' '}
                               <small style={{ color: '#94a3b8' }}>
-                                (${threadSummary.providerUsd.toFixed(6)} USD)
+                                (${Number(lastCb.providerCostUsd || 0).toFixed(6)} USD)
                               </small>
                             </span>
                             <span>
                               Operativo + Wompi:{' '}
-                              <strong>${threadSummary.overheadCop.toFixed(2)} COP</strong>
+                              <strong>${Number(lastCb.operationalOverheadCop || 0).toFixed(2)} COP</strong>
                             </span>
                             <span>
-                              Cobrado Usuario: <strong>${threadSummary.chargedCop} COP</strong>
+                              Cobrado en esta pregunta: <strong>${lastCb.userChargedCop} COP</strong>
+                              {threadSummary.turns > 1 && (
+                                <small style={{ color: '#94a3b8', marginLeft: '4px' }}>
+                                  (Acumulado {threadSummary.turns} turnos: ${threadSummary.chargedCop} COP)
+                                </small>
+                              )}
                             </span>
                             <span
                               style={{
-                                color: threadSummary.profitCop >= 0 ? '#4ade80' : '#f87171',
+                                color: Number(lastCb.netProfitCop) >= 0 ? '#4ade80' : '#f87171',
                                 fontWeight: 700,
                               }}
                             >
                               Ganancia Neta:{' '}
-                              {threadSummary.profitCop >= 0 ? '+' : ''}$
-                              {threadSummary.profitCop.toFixed(2)} COP ({threadMarginPct}%)
+                              {Number(lastCb.netProfitCop) >= 0 ? '+' : ''}$
+                              {Number(lastCb.netProfitCop || 0).toFixed(2)} COP ({lastCb.netMarginPct}%)
                             </span>
                           </div>
                         </>

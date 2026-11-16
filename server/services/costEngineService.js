@@ -3,7 +3,7 @@ import { db } from '../db.js';
 import { HttpError } from '../errors.js';
 
 const RESERVATION_TTL_MS = 2 * 60 * 1000; // 2 minutos de bloqueo máximo por petición en vuelo
-const DEFAULT_CONTEXT_BUDGET_TOKENS = 12000; // Techo de ventana deslizante para proteger costos
+const DEFAULT_CONTEXT_BUDGET_TOKENS = 2400; // Techo de ventana deslizante para evitar que el historial acumulado encarezca Flash
 
 export function estimateTokensFromText(text = '') {
   const clean = String(text || '').trim();

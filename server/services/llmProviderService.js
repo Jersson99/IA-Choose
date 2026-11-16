@@ -113,7 +113,8 @@ export const llmProviderService = {
               { role: 'user', content: promptText },
             ];
 
-      const isFlashModel = remoteModelId === 'deepseek-flash';
+      const isFlashModel =
+        remoteModelId === 'deepseek-flash' || modelRow.slug.includes('flash');
 
       const response = await fetch(`${config.providers.deepseek.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -125,10 +126,12 @@ export const llmProviderService = {
         body: JSON.stringify({
           model: remoteModelId,
           messages: normalizedMessages,
-          // En DeepSeek V4.1 Flash desactivamos el pensamiento interno para máxima velocidad (3-8s) y ahorro;
-          // en DeepSeek V4 Pro y DeepSeek R1 mantenemos el razonamiento activo con effort:"low".
+          // En DeepSeek V4.1 Flash desactivamos el pensamiento interno para máxima velocidad y costo mínimo ($10 COP);
+          // en DeepSeek V4 Pro y DeepSeek R1 mantenemos el razonamiento controlado con effort:"low".
           ...(isFlashModel ? { thinking: { type: 'disabled' } } : { effort: 'low' }),
-          max_tokens: Math.max(8192, Number(maxOutputTokens) || 8192),
+          max_tokens: isFlashModel
+            ? Math.min(1500, Number(maxOutputTokens) || 1500)
+            : Math.min(2048, Number(maxOutputTokens) || 2048),
           ...(remoteModelId === 'deepseek-reasoner' ? {} : { temperature: 0.6 }),
         }),
       });
@@ -336,11 +339,13 @@ export const llmProviderService = {
             maxOutputTokens: effectiveMaxOutputTokens,
           };
 
-          // Los modelos gemma-* no admiten thinkingBudget en generationConfig;
-          // en los modelos gemini-* limitamos thinkingBudget a 1024 para proteger tokens visibles y margen
+          // En modelos Flash desactivamos thinkingBudget (0) para no cobrar tokens de pensamiento como si fuera Pro;
+          // solo en modelos Pro o serie Gemini 4 habilitamos thinkingBudget controlado (1024).
           if (!remoteModelId.startsWith('gemma-')) {
+            const isGeminiProOr4 =
+              remoteModelId.includes('pro') || remoteModelId.startsWith('gemini-4');
             generationConfig.thinkingConfig = {
-              thinkingBudget: 1024,
+              thinkingBudget: isGeminiProOr4 ? 1024 : 0,
             };
           }
 
