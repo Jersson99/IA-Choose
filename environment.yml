@@ -1,0 +1,12 @@
+name: ia-choose-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - nodejs=22.11.0
+  - python=3.11
+  - pip=24.3.1
+  - pip:
+      - openai==1.66.3
+      - httpx==0.28.1
+      - python-dotenv==1.0.1
